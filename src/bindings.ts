@@ -403,6 +403,21 @@ async changeKeyboardImplementationSetting(implementation: string) : Promise<Resu
 async getKeyboardImplementation() : Promise<string> {
     return await TAURI_INVOKE("get_keyboard_implementation");
 },
+/**
+ * Persist a macOS profile that needs only microphone access.
+ *
+ * This command is called before post-onboarding input initialization. It does
+ * not register shortcuts itself; `initialize_shortcuts` will register the
+ * normalized bindings immediately after onboarding completes.
+ */
+async configureMinimumPermissions() : Promise<Result<MinimumPermissionsResult, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("configure_minimum_permissions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeShowTrayIconSetting(enabled: boolean) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_show_tray_icon_setting", { enabled }) };
@@ -514,6 +529,13 @@ async getDefaultSettings() : Promise<Result<AppSettings, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Whether the user's selected macOS input features need Accessibility.
+ * The frontend calls this before checking or requesting the OS permission.
+ */
+async macosAccessibilityRequired() : Promise<boolean> {
+    return await TAURI_INVOKE("macos_accessibility_required");
+},
 async getLogDirPath() : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_log_dir_path") };
@@ -563,7 +585,8 @@ async checkAppleIntelligenceAvailable() : Promise<boolean> {
 },
 /**
  * Try to initialize Enigo (keyboard/mouse simulation).
- * On macOS, this will return an error if accessibility permissions are not granted.
+ * On macOS, this returns an error when Accessibility is unavailable and never
+ * opens the system permission prompt implicitly.
  */
 async initializeEnigo() : Promise<Result<null, string>> {
     try {
@@ -575,7 +598,8 @@ async initializeEnigo() : Promise<Result<null, string>> {
 },
 /**
  * Initialize keyboard shortcuts.
- * On macOS, this should be called after accessibility permissions are granted.
+ * The Tauri shortcut backend works on macOS without Accessibility; HandyKeys
+ * is selected only by profiles that require it.
  * This is idempotent - calling it multiple times is safe.
  */
 async initializeShortcuts() : Promise<Result<null, string>> {
@@ -939,6 +963,12 @@ reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
 export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
+export type MinimumPermissionsResult = {
+/**
+ * Bindings changed to ordinary key combinations supported by Tauri's
+ * permission-free macOS shortcut backend.
+ */
+reset_bindings: string[] }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; source: ModelSource; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; supports_streaming: boolean; supports_language_detection: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 /**

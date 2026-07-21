@@ -196,7 +196,7 @@ Access debug features: `Cmd+Shift+D` (macOS) or `Ctrl+Shift+D` (Windows/Linux)
 
 ## Platform Notes
 
-- **macOS**: Metal acceleration, accessibility permissions required for keyboard shortcuts
+- **macOS**: Metal acceleration; Accessibility is only required for HandyKeys and synthetic input, not Tauri shortcuts with clipboard-only output
 - **Windows**: Vulkan acceleration, code signing
 - **Linux**: OpenBLAS + Vulkan, limited Wayland support, overlay uses GTK layer shell (disable with `HANDY_NO_GTK_LAYER_SHELL=1`)
 

@@ -148,9 +148,9 @@ fn should_force_show_permissions_window(app: &AppHandle) -> bool {
 
 fn initialize_core_logic(app_handle: &AppHandle) {
     // Note: Enigo (keyboard/mouse simulation) is NOT initialized here.
-    // The frontend is responsible for calling the `initialize_enigo` command
-    // after onboarding completes. This avoids triggering permission dialogs
-    // on macOS before the user is ready.
+    // The frontend calls `initialize_enigo` after onboarding only when the
+    // selected features require synthetic input. This keeps macOS
+    // Accessibility optional for clipboard-only use.
 
     // Initialize the managers. The audio recorder receives the streaming router
     // explicitly, so always-on microphone startup can wire live-preview frames
@@ -183,9 +183,8 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(tray::CurrentTrayIconState::new());
 
     // Note: Shortcuts are NOT initialized here.
-    // The frontend is responsible for calling the `initialize_shortcuts` command
-    // after permissions are confirmed (on macOS) or after onboarding completes.
-    // This matches the pattern used for Enigo initialization.
+    // The frontend calls `initialize_shortcuts` after onboarding. Ordinary
+    // Tauri shortcuts do not need macOS Accessibility; HandyKeys does.
 
     #[cfg(unix)]
     let signals = Signals::new([SIGUSR1, SIGUSR2]).unwrap();
@@ -650,6 +649,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_whats_new_last_seen_version_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
+            shortcut::configure_minimum_permissions,
             shortcut::change_show_tray_icon_setting,
             shortcut::change_transcribe_accelerator_setting,
             shortcut::change_ort_accelerator_setting,
@@ -664,6 +664,7 @@ pub fn run(cli_args: CliArgs) {
             commands::get_app_dir_path,
             commands::get_app_settings,
             commands::get_default_settings,
+            commands::macos_accessibility_required,
             commands::get_log_dir_path,
             commands::set_log_level,
             commands::open_recordings_folder,

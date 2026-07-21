@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "Wymagane uprawnienia",
-      "description": "Handy potrzebuje kilku uprawnień, aby działać poprawnie.",
+      "title": "Uprawnienia",
+      "description": "Zezwól na dostęp do mikrofonu, aby transkrybować. Dostępność umożliwia automatyczne wprowadzanie tekstu w systemie macOS.",
       "microphone": {
         "title": "Dostęp do mikrofonu",
         "description": "Wymagany do słyszenia Twojego głosu w celu transkrypcji."
       },
       "accessibility": {
         "title": "Dostęp do dostępności",
-        "description": "Wymagany do wpisywania transkrybowanego tekstu w Twoich aplikacjach."
+        "description": "Umożliwia automatyczne wprowadzanie tekstu i korzystanie z zaawansowanych skrótów klawiszowych."
       },
       "grant": "Przyznaj uprawnienie",
       "granted": "Przyznano",
       "waiting": "Oczekiwanie...",
       "allGranted": "Wszystko gotowe!",
+      "minimumModeDescription": "Korzysta ze standardowych skrótów i kopiuje każdą transkrypcję do schowka, aby wkleić ją ręcznie.",
+      "useMinimumPermissions": "Kontynuuj tylko z mikrofonem",
       "errors": {
         "checkFailed": "Nie udało się sprawdzić uprawnień. Spróbuj ponownie.",
         "requestFailed": "Nie udało się poprosić o uprawnienie. Spróbuj ponownie."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Nie znaleziono opcji"
   },
   "accessibility": {
-    "permissionsDescription": "Handy potrzebuje uprawnień dostępności, aby wpisywać transkrybowany tekst.",
+    "permissionsDescription": "Uprawnienie dostępności jest wymagane do automatycznego wprowadzania tekstu lub korzystania z wybranych skrótów klawiszowych.",
     "openSettings": "Otwórz ustawienia systemowe"
   },
   "errors": {

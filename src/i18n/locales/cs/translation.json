@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "Vyžadována oprávnění",
-      "description": "Handy potřebuje několik oprávnění pro správné fungování.",
+      "title": "Oprávnění",
+      "description": "Udělte přístup k mikrofonu pro přepis. Zpřístupnění umožňuje automatické zadávání textu v macOS.",
       "microphone": {
         "title": "Přístup k mikrofonu",
         "description": "Potřebný pro zachycení vašeho hlasu k přepisu."
       },
       "accessibility": {
         "title": "Přístup k usnadnění",
-        "description": "Potřebný pro psaní přepsaného textu do vašich aplikací."
+        "description": "Umožňuje automatické zadávání textu a pokročilé klávesové zkratky."
       },
       "grant": "Udělit oprávnění",
       "granted": "Uděleno",
       "waiting": "Čekání...",
       "allGranted": "Vše připraveno!",
+      "minimumModeDescription": "Používá standardní klávesové zkratky a každou transkripci zkopíruje do schránky k ručnímu vložení.",
+      "useMinimumPermissions": "Pokračovat pouze s mikrofonem",
       "errors": {
         "checkFailed": "Nepodařilo se zkontrolovat oprávnění. Zkuste to prosím znovu.",
         "requestFailed": "Nepodařilo se požádat o oprávnění. Zkuste to prosím znovu."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Nenalezeny žádné možnosti"
   },
   "accessibility": {
-    "permissionsDescription": "Handy potřebuje oprávnění usnadnění přístupu, aby mohlo psát přepsaný text.",
+    "permissionsDescription": "Zpřístupnění je nutné pro automatické zadávání textu nebo vybrané klávesové zkratky.",
     "openSettings": "Otevřít Nastavení systému"
   },
   "errors": {

@@ -41,7 +41,7 @@ The process is entirely local:
    - **Windows**: Also available via [winget](https://github.com/microsoft/winget-pkgs): `winget install cjpais.Handy` \
      **Note:** The Homebrew cask and winget package are not maintained by the Handy developers.
 2. Install the application
-3. Launch Handy and grant necessary system permissions (microphone, accessibility)
+3. Launch Handy and grant microphone access. On macOS, Accessibility is optional: it enables automatic paste and advanced shortcuts; microphone-only mode copies transcriptions to the clipboard instead.
 4. Configure your preferred keyboard shortcuts in Settings
 5. Start transcribing!
 

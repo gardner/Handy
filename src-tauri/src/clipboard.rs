@@ -608,6 +608,10 @@ fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool
     auto_submit && paste_method != PasteMethod::None
 }
 
+fn paste_requires_enigo(paste_method: PasteMethod, auto_submit: bool) -> bool {
+    paste_method.requires_synthetic_input(auto_submit)
+}
+
 pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let settings = get_settings(&app_handle);
     let paste_method = settings.paste_method;
@@ -626,14 +630,26 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         paste_method, paste_delay_ms, paste_delay_after_ms
     );
 
-    // Get the managed Enigo instance
-    let enigo_state = app_handle
-        .try_state::<EnigoState>()
-        .ok_or("Enigo state not initialized")?;
+    // Clipboard-only and external-script output must work without macOS
+    // Accessibility. Acquire Enigo only for paths that synthesize input.
+    let enigo_state = if paste_requires_enigo(paste_method, settings.auto_submit) {
+        Some(
+            app_handle
+                .try_state::<EnigoState>()
+                .ok_or("Enigo state not initialized")?,
+        )
+    } else {
+        None
+    };
     let mut enigo = enigo_state
-        .0
-        .lock()
-        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+        .as_ref()
+        .map(|state| {
+            state
+                .0
+                .lock()
+                .map_err(|e| format!("Failed to lock Enigo: {}", e))
+        })
+        .transpose()?;
 
     // Perform the paste operation
     match paste_method {
@@ -641,16 +657,18 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
             info!("PasteMethod::None selected - skipping paste action");
         }
         PasteMethod::Direct => {
+            let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
             paste_direct(
-                &mut enigo,
+                enigo,
                 &text,
                 #[cfg(target_os = "linux")]
                 settings.typing_tool,
             )?;
         }
         PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert => {
+            let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
             paste_via_clipboard(
-                &mut enigo,
+                enigo,
                 &text,
                 &app_handle,
                 &paste_method,
@@ -670,7 +688,8 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
 
     if should_send_auto_submit(settings.auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
-        send_return_key(&mut enigo, settings.auto_submit_key)?;
+        let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
+        send_return_key(enigo, settings.auto_submit_key)?;
     }
 
     // After pasting, optionally copy to clipboard based on settings
@@ -705,5 +724,28 @@ mod tests {
         assert!(should_send_auto_submit(true, PasteMethod::Direct));
         assert!(should_send_auto_submit(true, PasteMethod::CtrlShiftV));
         assert!(should_send_auto_submit(true, PasteMethod::ShiftInsert));
+    }
+
+    #[test]
+    fn disabled_paste_does_not_initialize_synthetic_input() {
+        assert!(!paste_requires_enigo(PasteMethod::None, true));
+    }
+
+    #[test]
+    fn external_script_only_initializes_synthetic_input_for_auto_submit() {
+        assert!(!paste_requires_enigo(PasteMethod::ExternalScript, false));
+        assert!(paste_requires_enigo(PasteMethod::ExternalScript, true));
+    }
+
+    #[test]
+    fn automatic_input_methods_initialize_synthetic_input() {
+        for method in [
+            PasteMethod::CtrlV,
+            PasteMethod::Direct,
+            PasteMethod::CtrlShiftV,
+            PasteMethod::ShiftInsert,
+        ] {
+            assert!(paste_requires_enigo(method, false));
+        }
     }
 }

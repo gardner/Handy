@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "Permissions Required",
-      "description": "Handy needs a couple of permissions to work properly.",
+      "title": "Permissions",
+      "description": "Grant microphone access to transcribe. Accessibility enables automatic text input on macOS.",
       "microphone": {
         "title": "Microphone Access",
         "description": "Required to hear your voice for transcription."
       },
       "accessibility": {
         "title": "Accessibility Access",
-        "description": "Required to type transcribed text into your applications."
+        "description": "Enables automatic text input and advanced keyboard shortcuts."
       },
       "grant": "Grant Permission",
       "granted": "Granted",
       "waiting": "Waiting...",
       "allGranted": "All set!",
+      "minimumModeDescription": "Uses standard shortcuts and copies each transcription to the clipboard for manual pasting.",
+      "useMinimumPermissions": "Continue with Microphone Only",
       "errors": {
         "checkFailed": "Failed to check permissions. Please try again.",
         "requestFailed": "Failed to request permission. Please try again."
@@ -596,7 +598,7 @@
     "noOptionsFound": "No options found"
   },
   "accessibility": {
-    "permissionsDescription": "Handy needs accessibility permissions to type transcribed text.",
+    "permissionsDescription": "Accessibility is needed for automatic text input or the selected keyboard shortcuts.",
     "openSettings": "Open System Settings"
   },
   "errors": {

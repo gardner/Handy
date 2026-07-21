@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "İzinler Gerekli",
-      "description": "Handy'nin düzgün çalışabilmesi için birkaç izne ihtiyacı var.",
+      "title": "İzinler",
+      "description": "Transkripsiyon için mikrofon erişimi verin. Erişilebilirlik izni macOS'te otomatik metin girişini etkinleştirir.",
       "microphone": {
         "title": "Mikrofon Erişimi",
         "description": "Sesinizi transkripsiyon için alabilmek için gereklidir."
       },
       "accessibility": {
         "title": "Erişilebilirlik Erişimi",
-        "description": "Transkribe edilen metni uygulamalarınıza yazabilmek için gereklidir."
+        "description": "Otomatik metin girişini ve gelişmiş klavye kısayollarını etkinleştirir."
       },
       "grant": "İzin Ver",
       "granted": "Verildi",
       "waiting": "Bekleniyor...",
       "allGranted": "Her şey hazır!",
+      "minimumModeDescription": "Standart kısayolları kullanır ve her transkripsiyonu elle yapıştırmanız için panoya kopyalar.",
+      "useMinimumPermissions": "Yalnızca mikrofon izniyle devam et",
       "errors": {
         "checkFailed": "İzinler kontrol edilemedi. Lütfen tekrar deneyin.",
         "requestFailed": "İzin isteği başarısız oldu. Lütfen tekrar deneyin."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Seçenek bulunamadı"
   },
   "accessibility": {
-    "permissionsDescription": "Handy, transkribe edilen metni yazabilmek için erişilebilirlik izinlerine ihtiyaç duyar.",
+    "permissionsDescription": "Otomatik metin girişi veya seçilen klavye kısayolları için erişilebilirlik izni gereklidir.",
     "openSettings": "Sistem Ayarlarını Aç"
   },
   "errors": {

@@ -17,6 +17,10 @@ import { WhatsNewGate } from "./components/whats-new";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
 import { commands } from "@/bindings";
+import {
+  hasRequiredMacOSPermissions,
+  unwrapCommandResult,
+} from "@/lib/permissions";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
 
 type OnboardingStep = "accessibility" | "model" | "done";
@@ -56,15 +60,40 @@ function App() {
     initializeRTL(i18n.language);
   }, [i18n.language]);
 
-  // Initialize Enigo, shortcuts, and refresh audio devices when main app loads
+  // Initialize shortcuts and only create Enigo when the selected features
+  // actually need synthetic input. On macOS, constructing Enigo without this
+  // guard would turn an optional feature into an implicit permission prompt.
   useEffect(() => {
     if (onboardingStep === "done" && !hasCompletedPostOnboardingInit.current) {
       hasCompletedPostOnboardingInit.current = true;
-      Promise.all([
-        commands.initializeEnigo(),
-        commands.initializeShortcuts(),
-      ]).catch((e) => {
-        console.warn("Failed to initialize:", e);
+
+      const initializeInput = async () => {
+        unwrapCommandResult(
+          await commands.initializeShortcuts(),
+          "Initialize shortcuts",
+        );
+
+        const currentPlatform = platform();
+        if (currentPlatform !== "macos") {
+          unwrapCommandResult(
+            await commands.initializeEnigo(),
+            "Initialize synthetic input",
+          );
+          return;
+        }
+
+        const accessibilityRequired =
+          await commands.macosAccessibilityRequired();
+        if (accessibilityRequired && (await checkAccessibilityPermission())) {
+          unwrapCommandResult(
+            await commands.initializeEnigo(),
+            "Initialize synthetic input",
+          );
+        }
+      };
+
+      initializeInput().catch((e) => {
+        console.warn("Failed to initialize input:", e);
       });
       refreshAudioDevices();
       refreshOutputDevices();
@@ -193,11 +222,20 @@ function App() {
 
         if (currentPlatform === "macos") {
           try {
-            const [hasAccessibility, hasMicrophone] = await Promise.all([
-              checkAccessibilityPermission(),
+            const [accessibilityRequired, hasMicrophone] = await Promise.all([
+              commands.macosAccessibilityRequired(),
               checkMicrophonePermission(),
             ]);
-            if (!hasAccessibility || !hasMicrophone) {
+            const hasAccessibility =
+              !accessibilityRequired || (await checkAccessibilityPermission());
+
+            if (
+              !hasRequiredMacOSPermissions({
+                microphoneGranted: hasMicrophone,
+                accessibilityGranted: hasAccessibility,
+                accessibilityRequired,
+              })
+            ) {
               await revealMainWindowForPermissions();
               setOnboardingStep("accessibility");
               return;

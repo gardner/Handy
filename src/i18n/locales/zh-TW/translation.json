@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "需要權限",
-      "description": "Handy 需要一些權限才能正常運作",
+      "title": "權限",
+      "description": "授予麥克風存取權限以進行轉錄。「輔助使用」可在 macOS 上自動輸入文字。",
       "microphone": {
         "title": "麥克風存取",
         "description": "需要聽取您的語音進行轉錄"
       },
       "accessibility": {
         "title": "輔助使用存取",
-        "description": "需要將轉錄文字輸入到您的應用程式中"
+        "description": "啟用自動文字輸入和進階鍵盤快捷鍵。"
       },
       "grant": "授予權限",
       "granted": "已授予",
       "waiting": "等待中...",
       "allGranted": "全部完成！",
+      "minimumModeDescription": "使用標準快捷鍵，並將每次轉錄內容複製到剪貼簿，以便手動貼上。",
+      "useMinimumPermissions": "僅允許麥克風並繼續",
       "errors": {
         "checkFailed": "檢查權限失敗，請重試",
         "requestFailed": "請求權限失敗，請重試"
@@ -593,7 +595,7 @@
     "noOptionsFound": "未找到選項"
   },
   "accessibility": {
-    "permissionsDescription": "Handy 需要輔助使用權限才能輸入轉錄的文字",
+    "permissionsDescription": "自動輸入文字或使用所選的鍵盤快捷鍵需要「輔助使用」權限。",
     "openSettings": "開啟系統設定"
   },
   "errors": {

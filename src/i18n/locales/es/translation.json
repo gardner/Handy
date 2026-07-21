@@ -99,20 +99,22 @@
       "selectModel": "Error al seleccionar el modelo"
     },
     "permissions": {
-      "title": "Permisos requeridos",
-      "description": "Handy necesita algunos permisos para funcionar correctamente.",
+      "title": "Permisos",
+      "description": "Concede acceso al micrófono para transcribir. El permiso de accesibilidad permite introducir texto automáticamente en macOS.",
       "microphone": {
         "title": "Acceso al micrófono",
         "description": "Necesario para escuchar tu voz para la transcripción."
       },
       "accessibility": {
         "title": "Acceso de accesibilidad",
-        "description": "Necesario para escribir el texto transcrito en tus aplicaciones."
+        "description": "Permite la introducción automática de texto y los atajos de teclado avanzados."
       },
       "grant": "Conceder permiso",
       "granted": "Concedido",
       "waiting": "Esperando...",
       "allGranted": "¡Todo listo!",
+      "minimumModeDescription": "Usa atajos estándar y copia cada transcripción al portapapeles para pegarla manualmente.",
+      "useMinimumPermissions": "Continuar solo con el micrófono",
       "errors": {
         "checkFailed": "Error al verificar permisos. Por favor, inténtalo de nuevo.",
         "requestFailed": "Error al solicitar permiso. Por favor, inténtalo de nuevo."
@@ -593,7 +595,7 @@
     "noOptionsFound": "No se encontraron opciones"
   },
   "accessibility": {
-    "permissionsDescription": "Handy necesita permisos de accesibilidad para escribir texto transcrito.",
+    "permissionsDescription": "El permiso de accesibilidad es necesario para introducir texto automáticamente o usar los atajos de teclado seleccionados.",
     "openSettings": "Abrir Ajustes del Sistema"
   },
   "errors": {

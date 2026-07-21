@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "Cần cấp quyền",
-      "description": "Handy cần một số quyền để hoạt động bình thường.",
+      "title": "Quyền",
+      "description": "Cấp quyền truy cập micrô để chuyển lời nói thành văn bản. Quyền Trợ năng cho phép tự động nhập văn bản trên macOS.",
       "microphone": {
         "title": "Quyền truy cập Micrô",
         "description": "Cần thiết để nghe giọng nói của bạn để chuyển đổi."
       },
       "accessibility": {
         "title": "Quyền truy cập Trợ năng",
-        "description": "Cần thiết để nhập văn bản đã chuyển đổi vào các ứng dụng của bạn."
+        "description": "Cho phép tự động nhập văn bản và sử dụng các phím tắt nâng cao."
       },
       "grant": "Cấp quyền",
       "granted": "Đã cấp",
       "waiting": "Đang chờ...",
       "allGranted": "Hoàn tất!",
+      "minimumModeDescription": "Sử dụng phím tắt tiêu chuẩn và sao chép từng bản chép lời vào bảng nhớ tạm để dán thủ công.",
+      "useMinimumPermissions": "Tiếp tục chỉ với quyền truy cập micrô",
       "errors": {
         "checkFailed": "Không thể kiểm tra quyền. Vui lòng thử lại.",
         "requestFailed": "Không thể yêu cầu quyền. Vui lòng thử lại."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Không tìm thấy tùy chọn"
   },
   "accessibility": {
-    "permissionsDescription": "Handy cần quyền truy cập để gõ văn bản đã chuyển đổi.",
+    "permissionsDescription": "Cần quyền Trợ năng để tự động nhập văn bản hoặc sử dụng các phím tắt đã chọn.",
     "openSettings": "Mở Cài đặt Hệ thống"
   },
   "errors": {

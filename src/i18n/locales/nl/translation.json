@@ -99,20 +99,22 @@
       "selectModel": "Model selecteren mislukt"
     },
     "permissions": {
-      "title": "Machtigingen vereist",
-      "description": "Handy heeft een aantal machtigingen nodig om goed te kunnen werken.",
+      "title": "Machtigingen",
+      "description": "Geef microfoontoegang om te transcriberen. Toegankelijkheid maakt automatische tekstinvoer mogelijk op macOS.",
       "microphone": {
         "title": "Microfoontoegang",
         "description": "Vereist om je stem op te nemen voor transcriptie."
       },
       "accessibility": {
         "title": "Toegankelijkheid",
-        "description": "Vereist om getranscribeerde tekst in je applicaties te kunnen typen."
+        "description": "Maakt automatische tekstinvoer en geavanceerde sneltoetsen mogelijk."
       },
       "grant": "Machtiging verlenen",
       "granted": "Verleend",
       "waiting": "Wachten...",
       "allGranted": "Alles ingesteld!",
+      "minimumModeDescription": "Gebruikt standaard sneltoetsen en kopieert elke transcriptie naar het klembord om handmatig te plakken.",
+      "useMinimumPermissions": "Doorgaan met alleen microfoontoegang",
       "errors": {
         "checkFailed": "Machtigingen controleren mislukt. Probeer het opnieuw.",
         "requestFailed": "Machtiging aanvragen mislukt. Probeer het opnieuw."
@@ -596,7 +598,7 @@
     "noOptionsFound": "Geen opties gevonden"
   },
   "accessibility": {
-    "permissionsDescription": "Handy heeft toegankelijkheidsmachtigingen nodig om getranscribeerde tekst te kunnen typen.",
+    "permissionsDescription": "Toegankelijkheid is vereist voor automatische tekstinvoer of de geselecteerde sneltoetsen.",
     "openSettings": "Systeeminstellingen openen"
   },
   "errors": {

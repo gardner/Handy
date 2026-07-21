@@ -5,6 +5,7 @@ use specta::Type;
 use std::collections::HashMap;
 use std::fmt;
 use tauri::AppHandle;
+use tauri_plugin_global_shortcut::{Code, Shortcut};
 use tauri_plugin_store::StoreExt;
 
 pub const APPLE_INTELLIGENCE_PROVIDER_ID: &str = "apple_intelligence";
@@ -206,6 +207,45 @@ impl Default for PasteMethod {
         #[cfg(not(target_os = "linux"))]
         return PasteMethod::CtrlV;
     }
+}
+
+impl PasteMethod {
+    /// Whether this output configuration synthesizes keyboard input.
+    ///
+    /// `None` never submits, even if a stale `auto_submit` value remains in a
+    /// settings file. External scripts run independently, but enabling
+    /// auto-submit still requires Handy to synthesize the submit key.
+    pub fn requires_synthetic_input(self, auto_submit: bool) -> bool {
+        match self {
+            PasteMethod::None => false,
+            PasteMethod::ExternalScript => auto_submit,
+            PasteMethod::CtrlV
+            | PasteMethod::Direct
+            | PasteMethod::ShiftInsert
+            | PasteMethod::CtrlShiftV => true,
+        }
+    }
+}
+
+fn macos_event_tap_key(code: Code) -> bool {
+    matches!(
+        code,
+        Code::MediaPlayPause
+            | Code::MediaTrackNext
+            | Code::MediaTrackPrevious
+            | Code::MediaFastForward
+            | Code::MediaRewind
+    )
+}
+
+fn tauri_shortcut_uses_macos_event_tap(raw: &str) -> bool {
+    raw.parse::<Shortcut>()
+        .is_ok_and(|shortcut| macos_event_tap_key(shortcut.key))
+}
+
+pub(crate) fn tauri_shortcut_is_permission_free_on_macos(raw: &str) -> bool {
+    raw.parse::<Shortcut>()
+        .is_ok_and(|shortcut| !macos_event_tap_key(shortcut.key))
 }
 
 impl ModelUnloadTimeout {
@@ -904,6 +944,34 @@ impl Default for AppSettings {
 }
 
 impl AppSettings {
+    /// Whether the selected macOS features need Accessibility access.
+    ///
+    /// Microphone capture, transcription, ordinary Tauri global shortcuts,
+    /// history, and clipboard writes do not need this permission.
+    pub fn requires_macos_accessibility(&self) -> bool {
+        let tauri_uses_media_key = self.keyboard_implementation == KeyboardImplementation::Tauri
+            && self.bindings.iter().any(|(id, binding)| {
+                let is_active = id == "transcribe"
+                    || id == "cancel"
+                    || (id == "transcribe_with_post_process" && self.post_process_enabled);
+                is_active && tauri_shortcut_uses_macos_event_tap(&binding.current_binding)
+            });
+
+        self.keyboard_implementation == KeyboardImplementation::HandyKeys
+            || tauri_uses_media_key
+            || self.paste_method.requires_synthetic_input(self.auto_submit)
+    }
+
+    /// Select a usable profile that avoids macOS Accessibility.
+    /// Transcriptions remain available in history and are copied to the
+    /// clipboard for the user to paste manually.
+    pub fn use_minimum_permissions_profile(&mut self) {
+        self.keyboard_implementation = KeyboardImplementation::Tauri;
+        self.paste_method = PasteMethod::None;
+        self.clipboard_handling = ClipboardHandling::CopyToClipboard;
+        self.auto_submit = false;
+    }
+
     pub fn active_post_process_provider(&self) -> Option<&PostProcessProvider> {
         self.post_process_providers
             .iter()
@@ -1357,6 +1425,131 @@ mod tests {
             settings.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn clipboard_only_with_tauri_shortcuts_does_not_need_accessibility() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::Tauri;
+        settings.paste_method = PasteMethod::None;
+        settings.clipboard_handling = ClipboardHandling::CopyToClipboard;
+
+        assert!(!settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn handy_keys_needs_accessibility_without_automatic_paste() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::HandyKeys;
+        settings.paste_method = PasteMethod::None;
+
+        assert!(settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn tauri_media_keys_need_accessibility_but_ordinary_shortcuts_do_not() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::Tauri;
+        settings.paste_method = PasteMethod::None;
+        settings
+            .bindings
+            .get_mut("transcribe")
+            .unwrap()
+            .current_binding = "command+shift+keyq".into();
+
+        assert!(!settings.requires_macos_accessibility());
+
+        settings
+            .bindings
+            .get_mut("transcribe")
+            .unwrap()
+            .current_binding = "MediaPlayPause".into();
+
+        assert!(settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn disabled_post_process_media_shortcut_does_not_need_accessibility() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::Tauri;
+        settings.paste_method = PasteMethod::None;
+        settings.post_process_enabled = false;
+        settings
+            .bindings
+            .get_mut("transcribe_with_post_process")
+            .unwrap()
+            .current_binding = "MediaTrackNext".into();
+
+        assert!(!settings.requires_macos_accessibility());
+
+        settings.post_process_enabled = true;
+        assert!(settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn synthetic_input_methods_need_accessibility() {
+        for paste_method in [
+            PasteMethod::CtrlV,
+            PasteMethod::Direct,
+            PasteMethod::CtrlShiftV,
+            PasteMethod::ShiftInsert,
+        ] {
+            let mut settings = get_default_settings();
+            settings.keyboard_implementation = KeyboardImplementation::Tauri;
+            settings.paste_method = paste_method;
+            settings.auto_submit = false;
+
+            assert!(
+                settings.requires_macos_accessibility(),
+                "{paste_method:?} should require synthetic input"
+            );
+        }
+    }
+
+    #[test]
+    fn external_script_only_needs_accessibility_for_auto_submit() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::Tauri;
+        settings.paste_method = PasteMethod::ExternalScript;
+        settings.auto_submit = false;
+        assert!(!settings.requires_macos_accessibility());
+
+        settings.auto_submit = true;
+        assert!(settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn disabled_paste_ignores_stale_auto_submit() {
+        let mut settings = get_default_settings();
+        settings.keyboard_implementation = KeyboardImplementation::Tauri;
+        settings.paste_method = PasteMethod::None;
+        settings.auto_submit = true;
+
+        assert!(!settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn minimum_permissions_profile_changes_only_input_capabilities() {
+        let mut settings = get_default_settings();
+        settings.selected_model = "keep-this-model".into();
+        settings.app_language = "fr".into();
+        settings.auto_submit = true;
+
+        settings.use_minimum_permissions_profile();
+
+        assert_eq!(
+            settings.keyboard_implementation,
+            KeyboardImplementation::Tauri
+        );
+        assert_eq!(settings.paste_method, PasteMethod::None);
+        assert_eq!(
+            settings.clipboard_handling,
+            ClipboardHandling::CopyToClipboard
+        );
+        assert!(!settings.auto_submit);
+        assert_eq!(settings.selected_model, "keep-this-model");
+        assert_eq!(settings.app_language, "fr");
+        assert!(!settings.requires_macos_accessibility());
     }
 
     #[cfg(not(target_os = "linux"))]

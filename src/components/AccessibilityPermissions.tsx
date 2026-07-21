@@ -5,6 +5,9 @@ import {
   checkAccessibilityPermission,
   requestAccessibilityPermission,
 } from "tauri-plugin-macos-permissions-api";
+import { commands } from "@/bindings";
+import { useSettings } from "@/hooks/useSettings";
+import { unwrapCommandResult } from "@/lib/permissions";
 
 // Define permission state type
 type PermissionState = "request" | "verify" | "granted";
@@ -15,11 +18,26 @@ interface ButtonConfig {
   className: string;
 }
 
+const initializeAccessibilityInput = async (): Promise<void> => {
+  const [enigoResult, shortcutsResult] = await Promise.all([
+    commands.initializeEnigo(),
+    commands.initializeShortcuts(),
+  ]);
+  unwrapCommandResult(enigoResult, "Initialize synthetic input");
+  unwrapCommandResult(shortcutsResult, "Initialize shortcuts");
+};
+
 const AccessibilityPermissions: React.FC = () => {
   const { t } = useTranslation();
+  const { settings } = useSettings();
   const [hasAccessibility, setHasAccessibility] = useState<boolean>(false);
+  const [isAccessibilityRequired, setIsAccessibilityRequired] = useState(false);
   const [permissionState, setPermissionState] =
     useState<PermissionState>("request");
+  const transcribeBinding = settings?.bindings?.transcribe?.current_binding;
+  const postProcessBinding =
+    settings?.bindings?.transcribe_with_post_process?.current_binding;
+  const cancelBinding = settings?.bindings?.cancel?.current_binding;
 
   // Accessibility permissions are only required on macOS
   const isMacOS = type() === "macos";
@@ -27,6 +45,11 @@ const AccessibilityPermissions: React.FC = () => {
   // Check permissions without requesting
   const checkPermissions = async (): Promise<boolean> => {
     const hasPermissions: boolean = await checkAccessibilityPermission();
+
+    if (hasPermissions) {
+      await initializeAccessibilityInput();
+    }
+
     setHasAccessibility(hasPermissions);
     setPermissionState(hasPermissions ? "granted" : "verify");
     return hasPermissions;
@@ -45,7 +68,12 @@ const AccessibilityPermissions: React.FC = () => {
       }
     } else if (permissionState === "verify") {
       // State is "verify" - check if permission was granted
-      await checkPermissions();
+      try {
+        await checkPermissions();
+      } catch (error) {
+        console.error("Failed to initialize Accessibility features:", error);
+        setHasAccessibility(false);
+      }
     }
   };
 
@@ -54,16 +82,38 @@ const AccessibilityPermissions: React.FC = () => {
     if (!isMacOS) return;
 
     const initialSetup = async (): Promise<void> => {
+      const accessibilityRequired = await commands.macosAccessibilityRequired();
+      setIsAccessibilityRequired(accessibilityRequired);
+
+      if (!accessibilityRequired) return;
+
       const hasPermissions: boolean = await checkAccessibilityPermission();
+      if (hasPermissions) {
+        await initializeAccessibilityInput();
+      }
+
       setHasAccessibility(hasPermissions);
       setPermissionState(hasPermissions ? "granted" : "request");
     };
 
-    initialSetup();
-  }, [isMacOS]);
+    initialSetup().catch((error) => {
+      console.error("Failed to initialize Accessibility features:", error);
+      setHasAccessibility(false);
+      setPermissionState("verify");
+    });
+  }, [
+    isMacOS,
+    settings?.auto_submit,
+    settings?.keyboard_implementation,
+    settings?.paste_method,
+    settings?.post_process_enabled,
+    transcribeBinding,
+    postProcessBinding,
+    cancelBinding,
+  ]);
 
-  // Skip rendering on non-macOS platforms or if permission is already granted
-  if (!isMacOS || hasAccessibility) {
+  // Skip when the selected features do not use synthetic input or HandyKeys.
+  if (!isMacOS || !isAccessibilityRequired || hasAccessibility) {
     return null;
   }
 

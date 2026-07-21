@@ -247,6 +247,60 @@ pub struct ImplementationChangeResult {
     pub reset_bindings: Vec<String>,
 }
 
+#[derive(Serialize, Type)]
+pub struct MinimumPermissionsResult {
+    /// Bindings changed to ordinary key combinations supported by Tauri's
+    /// permission-free macOS shortcut backend.
+    pub reset_bindings: Vec<String>,
+}
+
+fn prepare_minimum_permissions_profile(app_settings: &mut settings::AppSettings) -> Vec<String> {
+    app_settings.use_minimum_permissions_profile();
+
+    let defaults = settings::get_default_settings().bindings;
+    let mut reset_bindings = Vec::new();
+
+    // Retain valid ordinary custom shortcuts. Reset missing, invalid, and media
+    // key bindings because Tauri's macOS backend uses CGEventTap for media keys.
+    for (id, default_binding) in defaults {
+        let changed = app_settings.bindings.get(&id).is_none_or(|binding| {
+            !settings::tauri_shortcut_is_permission_free_on_macos(&binding.current_binding)
+        });
+
+        if changed {
+            app_settings.bindings.insert(id.clone(), default_binding);
+            reset_bindings.push(id);
+        }
+    }
+
+    reset_bindings.sort();
+    reset_bindings
+}
+
+/// Persist a macOS profile that needs only microphone access.
+///
+/// This command is called before post-onboarding input initialization. It does
+/// not register shortcuts itself; `initialize_shortcuts` will register the
+/// normalized bindings immediately after onboarding completes.
+#[tauri::command]
+#[specta::specta]
+pub fn configure_minimum_permissions(app: AppHandle) -> Result<MinimumPermissionsResult, String> {
+    let mut app_settings = settings::get_settings(&app);
+    let reset_bindings = prepare_minimum_permissions_profile(&mut app_settings);
+    settings::write_settings(&app, app_settings);
+
+    let _ = app.emit(
+        "settings-changed",
+        serde_json::json!({
+            "setting": "minimum_permissions_profile",
+            "value": true,
+            "reset_bindings": reset_bindings,
+        }),
+    );
+
+    Ok(MinimumPermissionsResult { reset_bindings })
+}
+
 /// Change the keyboard implementation with runtime switching.
 /// This will unregister all shortcuts from the old implementation,
 /// validate shortcuts for the new implementation (resetting invalid ones to defaults),
@@ -1279,4 +1333,60 @@ pub async fn get_available_accelerators() -> crate::managers::transcription::Ava
     tauri::async_runtime::spawn_blocking(crate::managers::transcription::get_available_accelerators)
         .await
         .expect("get_available_accelerators panicked")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minimum_permissions_profile_resets_custom_shortcuts_to_safe_defaults() {
+        let mut app_settings = settings::get_default_settings();
+        app_settings
+            .bindings
+            .get_mut("transcribe")
+            .unwrap()
+            .current_binding = "MediaPlayPause".into();
+        app_settings
+            .bindings
+            .get_mut("transcribe_with_post_process")
+            .unwrap()
+            .current_binding = "command+shift+keyq".into();
+        app_settings
+            .bindings
+            .get_mut("cancel")
+            .unwrap()
+            .current_binding = "option".into();
+
+        let reset = prepare_minimum_permissions_profile(&mut app_settings);
+
+        assert_eq!(reset, vec!["cancel", "transcribe"]);
+        assert_eq!(
+            app_settings.bindings["transcribe"].current_binding,
+            settings::get_default_settings().bindings["transcribe"].current_binding
+        );
+        assert_eq!(
+            app_settings.bindings["transcribe_with_post_process"].current_binding,
+            "command+shift+keyq"
+        );
+        assert_eq!(
+            app_settings.bindings["cancel"].current_binding,
+            settings::get_default_settings().bindings["cancel"].current_binding
+        );
+        assert!(!app_settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn minimum_permissions_profile_restores_missing_shortcuts() {
+        let mut app_settings = settings::get_default_settings();
+        app_settings.bindings.remove("cancel");
+
+        let reset = prepare_minimum_permissions_profile(&mut app_settings);
+
+        assert_eq!(reset, vec!["cancel"]);
+        assert_eq!(
+            app_settings.bindings["cancel"].current_binding,
+            settings::get_default_settings().bindings["cancel"].current_binding
+        );
+    }
 }

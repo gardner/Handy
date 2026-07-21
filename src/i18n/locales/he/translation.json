@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "נדרשות הרשאות",
-      "description": "Handy צריך כמה הרשאות כדי לעבוד כמו שצריך.",
+      "title": "הרשאות",
+      "description": "יש לאפשר גישה למיקרופון לצורך תמלול. הרשאת הנגישות מאפשרת הזנת טקסט אוטומטית ב-macOS.",
       "microphone": {
         "title": "גישה למיקרופון",
         "description": "נדרש כדי לשמוע את הקול שלך לצורך תמלול."
       },
       "accessibility": {
         "title": "גישת נגישות",
-        "description": "נדרש כדי להקליד את הטקסט המתומלל לתוך האפליקציות שלך."
+        "description": "מאפשרת הזנת טקסט אוטומטית וקיצורי מקלדת מתקדמים."
       },
       "grant": "תן הרשאה",
       "granted": "ניתנה",
       "waiting": "ממתין...",
       "allGranted": "הכול מוכן!",
+      "minimumModeDescription": "משתמש בקיצורי דרך רגילים ומעתיק כל תמלול ללוח לצורך הדבקה ידנית.",
+      "useMinimumPermissions": "המשך עם הרשאת מיקרופון בלבד",
       "errors": {
         "checkFailed": "בדיקת ההרשאות נכשלה. נסה שוב.",
         "requestFailed": "בקשת ההרשאה נכשלה. נסה שוב."
@@ -593,7 +595,7 @@
     "noOptionsFound": "לא נמצאו אפשרויות"
   },
   "accessibility": {
-    "permissionsDescription": "Handy צריך הרשאות נגישות כדי להקליד את הטקסט המתומלל.",
+    "permissionsDescription": "הרשאת נגישות נדרשת להזנת טקסט אוטומטית או לשימוש בקיצורי המקלדת שנבחרו.",
     "openSettings": "פתח את הגדרות המערכת"
   },
   "errors": {

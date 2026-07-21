@@ -99,20 +99,22 @@
       "selectModel": "Échec de la sélection du modèle"
     },
     "permissions": {
-      "title": "Autorisations requises",
-      "description": "Handy a besoin de quelques autorisations pour fonctionner correctement.",
+      "title": "Autorisations",
+      "description": "Accordez l’accès au microphone pour transcrire. L’autorisation d’accessibilité permet la saisie automatique de texte sous macOS.",
       "microphone": {
         "title": "Accès au microphone",
         "description": "Nécessaire pour entendre votre voix pour la transcription."
       },
       "accessibility": {
         "title": "Accès à l'accessibilité",
-        "description": "Nécessaire pour taper le texte transcrit dans vos applications."
+        "description": "Permet la saisie automatique de texte et les raccourcis clavier avancés."
       },
       "grant": "Accorder l'autorisation",
       "granted": "Accordé",
       "waiting": "En attente...",
       "allGranted": "Tout est prêt !",
+      "minimumModeDescription": "Utilise les raccourcis standard et copie chaque transcription dans le presse-papiers pour un collage manuel.",
+      "useMinimumPermissions": "Continuer avec le microphone uniquement",
       "errors": {
         "checkFailed": "Échec de la vérification des autorisations. Veuillez réessayer.",
         "requestFailed": "Échec de la demande d'autorisation. Veuillez réessayer."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Aucune option trouvée"
   },
   "accessibility": {
-    "permissionsDescription": "Handy a besoin des autorisations d'accessibilité pour taper le texte transcrit.",
+    "permissionsDescription": "L’autorisation d’accessibilité est requise pour la saisie automatique de texte ou les raccourcis clavier sélectionnés.",
     "openSettings": "Ouvrir les Préférences Système"
   },
   "errors": {

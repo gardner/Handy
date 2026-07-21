@@ -99,20 +99,22 @@
       "selectModel": "モデルの選択に失敗しました"
     },
     "permissions": {
-      "title": "権限が必要です",
-      "description": "Handy が正常に動作するにはいくつかの権限が必要です。",
+      "title": "権限",
+      "description": "文字起こしを行うにはマイクへのアクセスを許可してください。アクセシビリティを許可すると、macOSでテキストを自動入力できます。",
       "microphone": {
         "title": "マイクへのアクセス",
         "description": "文字起こしのためにあなたの声を聞くために必要です。"
       },
       "accessibility": {
         "title": "アクセシビリティへのアクセス",
-        "description": "アプリに文字起こししたテキストを入力するために必要です。"
+        "description": "テキストの自動入力と高度なキーボードショートカットを有効にします。"
       },
       "grant": "権限を許可",
       "granted": "許可済み",
       "waiting": "待機中…",
       "allGranted": "準備完了!",
+      "minimumModeDescription": "標準のショートカットを使用し、各文字起こしを手動で貼り付けられるようクリップボードにコピーします。",
+      "useMinimumPermissions": "マイクのみで続行",
       "errors": {
         "checkFailed": "権限の確認に失敗しました。もう一度お試しください。",
         "requestFailed": "権限のリクエストに失敗しました。もう一度お試しください。"
@@ -593,7 +595,7 @@
     "noOptionsFound": "オプションが見つかりません"
   },
   "accessibility": {
-    "permissionsDescription": "Handy が文字起こしテキストを入力するには、アクセシビリティ権限が必要です。",
+    "permissionsDescription": "テキストの自動入力または選択したキーボードショートカットには、アクセシビリティ権限が必要です。",
     "openSettings": "システム設定を開く"
   },
   "errors": {

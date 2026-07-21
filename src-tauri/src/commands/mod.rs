@@ -41,6 +41,14 @@ pub fn get_default_settings() -> Result<AppSettings, String> {
     Ok(crate::settings::get_default_settings())
 }
 
+/// Whether the user's selected macOS input features need Accessibility.
+/// The frontend calls this before checking or requesting the OS permission.
+#[tauri::command]
+#[specta::specta]
+pub fn macos_accessibility_required(app: AppHandle) -> bool {
+    get_settings(&app).requires_macos_accessibility()
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_log_dir_path(app: AppHandle) -> Result<String, String> {
@@ -128,7 +136,8 @@ pub fn check_apple_intelligence_available() -> bool {
 }
 
 /// Try to initialize Enigo (keyboard/mouse simulation).
-/// On macOS, this will return an error if accessibility permissions are not granted.
+/// On macOS, this returns an error when Accessibility is unavailable and never
+/// opens the system permission prompt implicitly.
 #[specta::specta]
 #[tauri::command]
 pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
@@ -165,7 +174,8 @@ pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
 pub struct ShortcutsInitialized;
 
 /// Initialize keyboard shortcuts.
-/// On macOS, this should be called after accessibility permissions are granted.
+/// The Tauri shortcut backend works on macOS without Accessibility; HandyKeys
+/// is selected only by profiles that require it.
 /// This is idempotent - calling it multiple times is safe.
 #[specta::specta]
 #[tauri::command]

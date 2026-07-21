@@ -99,20 +99,22 @@
       "selectModel": "Failed to select model"
     },
     "permissions": {
-      "title": "Behörigheter krävs",
-      "description": "Handy behöver ett par behörigheter för att fungera korrekt.",
+      "title": "Behörigheter",
+      "description": "Ge mikrofonåtkomst för transkribering. Hjälpmedelsåtkomst möjliggör automatisk textinmatning i macOS.",
       "microphone": {
         "title": "Mikrofonåtkomst",
         "description": "Krävs för att höra din röst för transkription."
       },
       "accessibility": {
         "title": "Hjälpmedelsåtkomst",
-        "description": "Krävs för att skriva transkriberad text i dina program."
+        "description": "Möjliggör automatisk textinmatning och avancerade kortkommandon."
       },
       "grant": "Bevilja behörighet",
       "granted": "Beviljad",
       "waiting": "Väntar...",
       "allGranted": "Allt klart!",
+      "minimumModeDescription": "Använder vanliga kortkommandon och kopierar varje transkription till urklipp för manuell inklistring.",
+      "useMinimumPermissions": "Fortsätt med endast mikrofonåtkomst",
       "errors": {
         "checkFailed": "Misslyckades med att kontrollera behörigheter. Försök igen.",
         "requestFailed": "Misslyckades med att begära behörighet. Försök igen."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Inga alternativ hittades"
   },
   "accessibility": {
-    "permissionsDescription": "Handy behöver behörighet för hjälpmedel för att kunna skriva transkriberad text.",
+    "permissionsDescription": "Hjälpmedelsåtkomst krävs för automatisk textinmatning eller de valda kortkommandona.",
     "openSettings": "Öppna systeminställningar"
   },
   "errors": {

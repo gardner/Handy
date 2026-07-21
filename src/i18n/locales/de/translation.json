@@ -99,20 +99,22 @@
       "selectModel": "Modellauswahl fehlgeschlagen"
     },
     "permissions": {
-      "title": "Berechtigungen erforderlich",
-      "description": "Handy benötigt einige Berechtigungen, um richtig zu funktionieren.",
+      "title": "Berechtigungen",
+      "description": "Gewähre Mikrofonzugriff für die Transkription. Die Bedienungshilfen ermöglichen die automatische Texteingabe unter macOS.",
       "microphone": {
         "title": "Mikrofonzugriff",
         "description": "Erforderlich, um deine Stimme für die Transkription zu hören."
       },
       "accessibility": {
         "title": "Bedienungshilfen-Zugriff",
-        "description": "Erforderlich, um transkribierten Text in deine Anwendungen einzugeben."
+        "description": "Ermöglicht automatische Texteingabe und erweiterte Tastenkürzel."
       },
       "grant": "Berechtigung erteilen",
       "granted": "Erteilt",
       "waiting": "Warten...",
       "allGranted": "Alles bereit!",
+      "minimumModeDescription": "Verwendet Standard-Tastenkürzel und kopiert jede Transkription zum manuellen Einfügen in die Zwischenablage.",
+      "useMinimumPermissions": "Nur mit Mikrofon fortfahren",
       "errors": {
         "checkFailed": "Berechtigungsprüfung fehlgeschlagen. Bitte erneut versuchen.",
         "requestFailed": "Berechtigungsanfrage fehlgeschlagen. Bitte erneut versuchen."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Keine Optionen gefunden"
   },
   "accessibility": {
-    "permissionsDescription": "Handy benötigt Bedienungshilfen-Berechtigungen, um transkribierten Text einzugeben.",
+    "permissionsDescription": "Der Bedienungshilfen-Zugriff ist für die automatische Texteingabe oder die ausgewählten Tastenkürzel erforderlich.",
     "openSettings": "Systemeinstellungen öffnen"
   },
   "errors": {

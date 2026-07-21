@@ -99,20 +99,22 @@
       "selectModel": "Impossibile selezionare il modello"
     },
     "permissions": {
-      "title": "Permessi Richiesti",
-      "description": "Handy ha bisogno di alcuni permessi per funzionare correttamente.",
+      "title": "Permessi",
+      "description": "Concedi l'accesso al microfono per la trascrizione. L'accessibilità consente l'inserimento automatico del testo su macOS.",
       "microphone": {
         "title": "Accesso al Microfono",
         "description": "Necessario per sentire la tua voce per la trascrizione."
       },
       "accessibility": {
         "title": "Accesso all'Accessibilità",
-        "description": "Necessario per digitare il testo trascritto nelle tue applicazioni."
+        "description": "Consente l'inserimento automatico del testo e le scorciatoie da tastiera avanzate."
       },
       "grant": "Concedi Permesso",
       "granted": "Concesso",
       "waiting": "In attesa...",
       "allGranted": "Tutto pronto!",
+      "minimumModeDescription": "Usa le scorciatoie standard e copia ogni trascrizione negli appunti per incollarla manualmente.",
+      "useMinimumPermissions": "Continua solo con il microfono",
       "errors": {
         "checkFailed": "Impossibile verificare i permessi. Riprova.",
         "requestFailed": "Impossibile richiedere il permesso. Riprova."
@@ -593,7 +595,7 @@
     "noOptionsFound": "Nessuna opzione trovata"
   },
   "accessibility": {
-    "permissionsDescription": "Handy ha bisogno dei permessi di accessibilità per digitare il testo trascritto.",
+    "permissionsDescription": "Il permesso di accessibilità è necessario per l'inserimento automatico del testo o per le scorciatoie da tastiera selezionate.",
     "openSettings": "Apri Impostazioni di Sistema"
   },
   "errors": {

@@ -99,20 +99,22 @@
       "selectModel": "Kunne ikke vælge model"
     },
     "permissions": {
-      "title": "Tilladelser påkrævet",
-      "description": "Handy har brug for et par tilladelser for at fungere korrekt.",
+      "title": "Tilladelser",
+      "description": "Giv adgang til mikrofonen for at transskribere. Tilgængelighedsadgang muliggør automatisk tekstindtastning på macOS.",
       "microphone": {
         "title": "Mikrofonadgang",
         "description": "Påkrævet for at høre din stemme til transskription."
       },
       "accessibility": {
         "title": "Tilgængelighedsadgang",
-        "description": "Påkrævet for at skrive den transskriberede tekst ind i dine programmer."
+        "description": "Muliggør automatisk tekstindtastning og avancerede tastaturgenveje."
       },
       "grant": "Giv tilladelse",
       "granted": "Givet",
       "waiting": "Venter...",
       "allGranted": "Alt er klar!",
+      "minimumModeDescription": "Bruger standardgenveje og kopierer hver transskription til udklipsholderen, så den kan indsættes manuelt.",
+      "useMinimumPermissions": "Fortsæt kun med mikrofon",
       "errors": {
         "checkFailed": "Kunne ikke tjekke tilladelser. Prøv igen.",
         "requestFailed": "Kunne ikke anmode om tilladelse. Prøv igen."
@@ -596,7 +598,7 @@
     "noOptionsFound": "Ingen muligheder fundet"
   },
   "accessibility": {
-    "permissionsDescription": "Handy har brug for tilgængelighedstilladelser for at skrive den transskriberede tekst.",
+    "permissionsDescription": "Tilgængelighedsadgang er nødvendig for automatisk tekstindtastning eller de valgte tastaturgenveje.",
     "openSettings": "Åbn systemindstillinger"
   },
   "errors": {
