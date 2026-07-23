@@ -114,6 +114,8 @@
       "waiting": "待機中…",
       "allGranted": "準備完了!",
       "minimumModeDescription": "標準のショートカットを使用し、各文字起こしを手動で貼り付けられるようクリップボードにコピーします。",
+      "minimumModeWarningTitle": "アクセシビリティなしで続けますか？",
+      "minimumModeWarningDescription": "自動貼り付けと高度なショートカットは利用できません。Option+Spaceで録音を開始でき、Handyが各文字起こしをコピーするため、Cmd+Vで手動で貼り付けられます。",
       "useMinimumPermissions": "マイクのみで続行",
       "errors": {
         "checkFailed": "権限の確認に失敗しました。もう一度お試しください。",
@@ -595,8 +597,10 @@
     "noOptionsFound": "オプションが見つかりません"
   },
   "accessibility": {
-    "permissionsDescription": "テキストの自動入力または選択したキーボードショートカットには、アクセシビリティ権限が必要です。",
-    "openSettings": "システム設定を開く"
+    "permissionsDescription": "テキストの自動入力と高度なキーボードショートカットを使用するには、システム設定でアクセシビリティを有効にしてください。",
+    "openSettings": "システム設定を開く",
+    "switchedToMinimumMode": "アクセシビリティを利用できなくなりました。Handyは標準ショートカットとクリップボードのみの出力に切り替わりました。文字起こしはCmd+Vで手動で貼り付けてください。",
+    "transcriptionCopied": "クリップボードにコピーしました — {{shortcut}}で貼り付けられます。"
   },
   "errors": {
     "loadDirectory": "ディレクトリの読み込みエラー: {{error}}",

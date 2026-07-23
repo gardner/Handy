@@ -114,6 +114,8 @@
       "waiting": "Aguardando...",
       "allGranted": "Tudo pronto!",
       "minimumModeDescription": "Usa atalhos padrão e copia cada transcrição para a área de transferência para colagem manual.",
+      "minimumModeWarningTitle": "Continuar sem Acessibilidade?",
+      "minimumModeWarningDescription": "A colagem automática e os atalhos avançados não estarão disponíveis. Ainda poderá gravar com Option+Espaço, e o Handy copiará cada transcrição para que possa colá-la manualmente com Cmd+V.",
       "useMinimumPermissions": "Continuar apenas com o microfone",
       "errors": {
         "checkFailed": "Erro ao verificar permissões. Por favor, tente novamente.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Nenhuma opção encontrada"
   },
   "accessibility": {
-    "permissionsDescription": "A permissão de Acessibilidade é necessária para a entrada automática de texto ou para usar os atalhos de teclado selecionados.",
-    "openSettings": "Abrir Configurações do Sistema"
+    "permissionsDescription": "Ative a Acessibilidade nas Configurações do Sistema para usar a entrada automática de texto e atalhos de teclado avançados.",
+    "openSettings": "Abrir Configurações do Sistema",
+    "switchedToMinimumMode": "A Acessibilidade já não está disponível. O Handy mudou para atalhos padrão e saída apenas para a área de transferência; cole as transcrições manualmente com Cmd+V.",
+    "transcriptionCopied": "Copiado para a área de transferência — prima {{shortcut}} para colar."
   },
   "errors": {
     "loadDirectory": "Erro ao carregar diretório: {{error}}",

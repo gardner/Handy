@@ -114,6 +114,8 @@
       "waiting": "Wachten...",
       "allGranted": "Alles ingesteld!",
       "minimumModeDescription": "Gebruikt standaard sneltoetsen en kopieert elke transcriptie naar het klembord om handmatig te plakken.",
+      "minimumModeWarningTitle": "Doorgaan zonder Toegankelijkheid?",
+      "minimumModeWarningDescription": "Automatisch plakken en geavanceerde sneltoetsen zijn niet beschikbaar. Je kunt nog steeds opnemen met Option+Spatie; Handy kopieert elke transcriptie zodat je die handmatig met Cmd+V kunt plakken.",
       "useMinimumPermissions": "Doorgaan met alleen microfoontoegang",
       "errors": {
         "checkFailed": "Machtigingen controleren mislukt. Probeer het opnieuw.",
@@ -598,8 +600,10 @@
     "noOptionsFound": "Geen opties gevonden"
   },
   "accessibility": {
-    "permissionsDescription": "Toegankelijkheid is vereist voor automatische tekstinvoer of de geselecteerde sneltoetsen.",
-    "openSettings": "Systeeminstellingen openen"
+    "permissionsDescription": "Schakel Toegankelijkheid in bij Systeeminstellingen om automatische tekstinvoer en geavanceerde sneltoetsen te gebruiken.",
+    "openSettings": "Systeeminstellingen openen",
+    "switchedToMinimumMode": "Toegankelijkheid is niet meer beschikbaar. Handy is overgeschakeld op standaard sneltoetsen en alleen klemborduitvoer; plak transcripties handmatig met Cmd+V.",
+    "transcriptionCopied": "Gekopieerd naar het klembord — druk op {{shortcut}} om te plakken."
   },
   "errors": {
     "loadDirectory": "Fout bij laden van map: {{error}}",

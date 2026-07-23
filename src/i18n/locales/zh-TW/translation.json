@@ -114,6 +114,8 @@
       "waiting": "等待中...",
       "allGranted": "全部完成！",
       "minimumModeDescription": "使用標準快捷鍵，並將每次轉錄內容複製到剪貼簿，以便手動貼上。",
+      "minimumModeWarningTitle": "要在未啟用「輔助使用」的情況下繼續嗎？",
+      "minimumModeWarningDescription": "自動貼上和進階快捷鍵將無法使用。你仍可使用 Option+Space 錄音，Handy 會複製每次轉錄內容，讓你使用 Cmd+V 手動貼上。",
       "useMinimumPermissions": "僅允許麥克風並繼續",
       "errors": {
         "checkFailed": "檢查權限失敗，請重試",
@@ -595,8 +597,10 @@
     "noOptionsFound": "未找到選項"
   },
   "accessibility": {
-    "permissionsDescription": "自動輸入文字或使用所選的鍵盤快捷鍵需要「輔助使用」權限。",
-    "openSettings": "開啟系統設定"
+    "permissionsDescription": "若要使用自動文字輸入和進階鍵盤快捷鍵，請在「系統設定」中啟用「輔助使用」。",
+    "openSettings": "開啟系統設定",
+    "switchedToMinimumMode": "「輔助使用」已無法使用。Handy 已切換為標準快捷鍵和僅輸出至剪貼簿；請使用 Cmd+V 手動貼上轉錄內容。",
+    "transcriptionCopied": "已複製到剪貼簿 — 按下 {{shortcut}} 即可貼上。"
   },
   "errors": {
     "loadDirectory": "載入目錄時發生錯誤: {{error}}",

@@ -114,6 +114,8 @@
       "waiting": "Đang chờ...",
       "allGranted": "Hoàn tất!",
       "minimumModeDescription": "Sử dụng phím tắt tiêu chuẩn và sao chép từng bản chép lời vào bảng nhớ tạm để dán thủ công.",
+      "minimumModeWarningTitle": "Tiếp tục mà không bật Trợ năng?",
+      "minimumModeWarningDescription": "Tính năng dán tự động và phím tắt nâng cao sẽ không khả dụng. Bạn vẫn có thể ghi âm bằng Option+Space, và Handy sẽ sao chép từng bản chép lời để bạn dán thủ công bằng Cmd+V.",
       "useMinimumPermissions": "Tiếp tục chỉ với quyền truy cập micrô",
       "errors": {
         "checkFailed": "Không thể kiểm tra quyền. Vui lòng thử lại.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Không tìm thấy tùy chọn"
   },
   "accessibility": {
-    "permissionsDescription": "Cần quyền Trợ năng để tự động nhập văn bản hoặc sử dụng các phím tắt đã chọn.",
-    "openSettings": "Mở Cài đặt Hệ thống"
+    "permissionsDescription": "Bật Trợ năng trong Cài đặt Hệ thống để sử dụng tính năng tự động nhập văn bản và các phím tắt nâng cao.",
+    "openSettings": "Mở Cài đặt Hệ thống",
+    "switchedToMinimumMode": "Trợ năng không còn khả dụng. Handy đã chuyển sang phím tắt tiêu chuẩn và chỉ xuất vào bảng nhớ tạm; hãy dán bản chép lời thủ công bằng Cmd+V.",
+    "transcriptionCopied": "Đã sao chép vào bảng nhớ tạm — nhấn {{shortcut}} để dán."
   },
   "errors": {
     "loadDirectory": "Lỗi khi tải thư mục: {{error}}",

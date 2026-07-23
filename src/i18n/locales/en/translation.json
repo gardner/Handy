@@ -113,7 +113,9 @@
       "granted": "Granted",
       "waiting": "Waiting...",
       "allGranted": "All set!",
-      "minimumModeDescription": "Uses standard shortcuts and copies each transcription to the clipboard for manual pasting.",
+      "minimumModeDescription": "Without Accessibility, automatic paste and advanced shortcuts will be unavailable. Handy will use standard shortcuts and copy each transcription to the clipboard for manual pasting.",
+      "minimumModeWarningTitle": "Continue without Accessibility?",
+      "minimumModeWarningDescription": "Automatic paste and advanced shortcuts will be unavailable. You can still record with Option+Space, and Handy will copy each transcription so you can paste it manually with Cmd+V.",
       "useMinimumPermissions": "Continue with Microphone Only",
       "errors": {
         "checkFailed": "Failed to check permissions. Please try again.",
@@ -598,8 +600,10 @@
     "noOptionsFound": "No options found"
   },
   "accessibility": {
-    "permissionsDescription": "Accessibility is needed for automatic text input or the selected keyboard shortcuts.",
-    "openSettings": "Open System Settings"
+    "permissionsDescription": "Enable Accessibility in System Settings to use automatic text input and advanced keyboard shortcuts.",
+    "openSettings": "Open System Settings",
+    "switchedToMinimumMode": "Accessibility is no longer available. Handy switched to standard shortcuts and clipboard-only output; paste transcriptions manually with Cmd+V.",
+    "transcriptionCopied": "Copied to clipboard — press {{shortcut}} to paste."
   },
   "errors": {
     "loadDirectory": "Error loading directory: {{error}}",

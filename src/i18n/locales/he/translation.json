@@ -114,6 +114,8 @@
       "waiting": "ממתין...",
       "allGranted": "הכול מוכן!",
       "minimumModeDescription": "משתמש בקיצורי דרך רגילים ומעתיק כל תמלול ללוח לצורך הדבקה ידנית.",
+      "minimumModeWarningTitle": "להמשיך ללא נגישות?",
+      "minimumModeWarningDescription": "הדבקה אוטומטית וקיצורי מקלדת מתקדמים לא יהיו זמינים. עדיין ניתן להקליט באמצעות Option+Space, ו-Handy יעתיק כל תמלול כדי שתוכלו להדביק אותו ידנית באמצעות Cmd+V.",
       "useMinimumPermissions": "המשך עם הרשאת מיקרופון בלבד",
       "errors": {
         "checkFailed": "בדיקת ההרשאות נכשלה. נסה שוב.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "לא נמצאו אפשרויות"
   },
   "accessibility": {
-    "permissionsDescription": "הרשאת נגישות נדרשת להזנת טקסט אוטומטית או לשימוש בקיצורי המקלדת שנבחרו.",
-    "openSettings": "פתח את הגדרות המערכת"
+    "permissionsDescription": "יש להפעיל נגישות בהגדרות המערכת כדי להשתמש בהזנת טקסט אוטומטית ובקיצורי מקלדת מתקדמים.",
+    "openSettings": "פתח את הגדרות המערכת",
+    "switchedToMinimumMode": "הנגישות אינה זמינה עוד. Handy עבר לקיצורי דרך רגילים ולפלט ללוח בלבד; יש להדביק תמלולים ידנית באמצעות Cmd+V.",
+    "transcriptionCopied": "הועתק ללוח — יש ללחוץ על {{shortcut}} כדי להדביק."
   },
   "errors": {
     "loadDirectory": "שגיאה בטעינת תיקייה: {{error}}",

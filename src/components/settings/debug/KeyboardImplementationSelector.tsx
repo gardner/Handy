@@ -5,6 +5,13 @@ import { Dropdown, type DropdownOption } from "../../ui/Dropdown";
 import { useSettings } from "../../../hooks/useSettings";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
+import { useOsType } from "@/hooks/useOsType";
+import {
+  accessibilityFeatureAvailable,
+  keyboardImplementationRequiresAccessibility,
+} from "@/lib/accessibility";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
+import { AccessibilityRequiredNote } from "../AccessibilityRequiredNote";
 
 const KEYBOARD_IMPLEMENTATION_OPTIONS: DropdownOption[] = [
   { value: "tauri", label: "Tauri Global Shortcut" },
@@ -20,9 +27,19 @@ export const KeyboardImplementationSelector: React.FC<
   KeyboardImplementationSelectorProps
 > = ({ descriptionMode = "tooltip", grouped = false }) => {
   const { t } = useTranslation();
+  const osType = useOsType();
   const { getSetting, isUpdating, refreshSettings } = useSettings();
+  const accessibilityStatus = useAccessibilityStore((state) => state.status);
   const currentImplementation =
     getSetting("keyboard_implementation") ?? "tauri";
+  const options = KEYBOARD_IMPLEMENTATION_OPTIONS.map((option) => ({
+    ...option,
+    disabled: !accessibilityFeatureAvailable(
+      osType,
+      accessibilityStatus,
+      keyboardImplementationRequiresAccessibility(osType, option.value),
+    ),
+  }));
 
   const handleSelect = async (value: string) => {
     if (value === currentImplementation) return;
@@ -59,12 +76,17 @@ export const KeyboardImplementationSelector: React.FC<
       grouped={grouped}
       layout="horizontal"
     >
-      <Dropdown
-        options={KEYBOARD_IMPLEMENTATION_OPTIONS}
-        selectedValue={currentImplementation}
-        onSelect={handleSelect}
-        disabled={isUpdating("keyboard_implementation")}
-      />
+      <div className="flex flex-col gap-2">
+        <Dropdown
+          options={options}
+          selectedValue={currentImplementation}
+          onSelect={handleSelect}
+          disabled={isUpdating("keyboard_implementation")}
+        />
+        {osType === "macos" && accessibilityStatus === "denied" && (
+          <AccessibilityRequiredNote />
+        )}
+      </div>
     </SettingContainer>
   );
 };

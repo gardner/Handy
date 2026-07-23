@@ -5,6 +5,12 @@ import { SettingContainer } from "../ui/SettingContainer";
 import { useSettings } from "../../hooks/useSettings";
 import { useOsType } from "../../hooks/useOsType";
 import type { AutoSubmitKey } from "@/bindings";
+import {
+  accessibilityFeatureAvailable,
+  autoSubmitOptionRequiresAccessibility,
+} from "@/lib/accessibility";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
+import { AccessibilityRequiredNote } from "./AccessibilityRequiredNote";
 
 interface AutoSubmitProps {
   descriptionMode?: "inline" | "tooltip";
@@ -18,6 +24,7 @@ export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
     const { t } = useTranslation();
     const osType = useOsType();
     const { getSetting, updateSetting, isUpdating } = useSettings();
+    const accessibilityStatus = useAccessibilityStore((state) => state.status);
 
     const enabled = getSetting("auto_submit") ?? false;
     const selectedKey = (getSetting("auto_submit_key") ||
@@ -36,14 +43,29 @@ export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
       {
         value: "enter",
         label: t("settings.advanced.autoSubmit.options.enter"),
+        disabled: !accessibilityFeatureAvailable(
+          osType,
+          accessibilityStatus,
+          autoSubmitOptionRequiresAccessibility(osType, "enter"),
+        ),
       },
       {
         value: "ctrl_enter",
         label: t("settings.advanced.autoSubmit.options.ctrlEnter"),
+        disabled: !accessibilityFeatureAvailable(
+          osType,
+          accessibilityStatus,
+          autoSubmitOptionRequiresAccessibility(osType, "ctrl_enter"),
+        ),
       },
       {
         value: "cmd_enter",
         label: submitWithMetaLabel,
+        disabled: !accessibilityFeatureAvailable(
+          osType,
+          accessibilityStatus,
+          autoSubmitOptionRequiresAccessibility(osType, "cmd_enter"),
+        ),
       },
     ];
 
@@ -68,12 +90,19 @@ export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
         descriptionMode={descriptionMode}
         grouped={grouped}
       >
-        <Dropdown
-          options={autoSubmitOptions}
-          selectedValue={selectedValue}
-          onSelect={handleAutoSubmitSelect}
-          disabled={isUpdating("auto_submit") || isUpdating("auto_submit_key")}
-        />
+        <div className="flex flex-col gap-2">
+          <Dropdown
+            options={autoSubmitOptions}
+            selectedValue={selectedValue}
+            onSelect={handleAutoSubmitSelect}
+            disabled={
+              isUpdating("auto_submit") || isUpdating("auto_submit_key")
+            }
+          />
+          {osType === "macos" && accessibilityStatus === "denied" && (
+            <AccessibilityRequiredNote />
+          )}
+        </div>
       </SettingContainer>
     );
   },

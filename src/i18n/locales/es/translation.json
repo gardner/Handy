@@ -114,6 +114,8 @@
       "waiting": "Esperando...",
       "allGranted": "¡Todo listo!",
       "minimumModeDescription": "Usa atajos estándar y copia cada transcripción al portapapeles para pegarla manualmente.",
+      "minimumModeWarningTitle": "¿Continuar sin Accesibilidad?",
+      "minimumModeWarningDescription": "El pegado automático y los atajos avanzados no estarán disponibles. Podrás seguir grabando con Option+Espacio, y Handy copiará cada transcripción para que puedas pegarla manualmente con Cmd+V.",
       "useMinimumPermissions": "Continuar solo con el micrófono",
       "errors": {
         "checkFailed": "Error al verificar permisos. Por favor, inténtalo de nuevo.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "No se encontraron opciones"
   },
   "accessibility": {
-    "permissionsDescription": "El permiso de accesibilidad es necesario para introducir texto automáticamente o usar los atajos de teclado seleccionados.",
-    "openSettings": "Abrir Ajustes del Sistema"
+    "permissionsDescription": "Activa Accesibilidad en Ajustes del Sistema para usar la introducción automática de texto y los atajos de teclado avanzados.",
+    "openSettings": "Abrir Ajustes del Sistema",
+    "switchedToMinimumMode": "Accesibilidad ya no está disponible. Handy cambió a los atajos estándar y a la salida solo al portapapeles; pega las transcripciones manualmente con Cmd+V.",
+    "transcriptionCopied": "Copiado al portapapeles — pulsa {{shortcut}} para pegar."
   },
   "errors": {
     "loadDirectory": "Error al cargar el directorio: {{error}}",

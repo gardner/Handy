@@ -114,6 +114,8 @@
       "waiting": "Bekleniyor...",
       "allGranted": "Her şey hazır!",
       "minimumModeDescription": "Standart kısayolları kullanır ve her transkripsiyonu elle yapıştırmanız için panoya kopyalar.",
+      "minimumModeWarningTitle": "Erişilebilirlik olmadan devam edilsin mi?",
+      "minimumModeWarningDescription": "Otomatik yapıştırma ve gelişmiş kısayollar kullanılamayacak. Option+Space ile kayıt yapmaya devam edebilirsiniz; Handy her transkripsiyonu kopyalar ve Cmd+V ile elle yapıştırabilirsiniz.",
       "useMinimumPermissions": "Yalnızca mikrofon izniyle devam et",
       "errors": {
         "checkFailed": "İzinler kontrol edilemedi. Lütfen tekrar deneyin.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Seçenek bulunamadı"
   },
   "accessibility": {
-    "permissionsDescription": "Otomatik metin girişi veya seçilen klavye kısayolları için erişilebilirlik izni gereklidir.",
-    "openSettings": "Sistem Ayarlarını Aç"
+    "permissionsDescription": "Otomatik metin girişi ve gelişmiş klavye kısayollarını kullanmak için Sistem Ayarları'nda Erişilebilirlik'i etkinleştirin.",
+    "openSettings": "Sistem Ayarlarını Aç",
+    "switchedToMinimumMode": "Erişilebilirlik artık kullanılamıyor. Handy standart kısayollara ve yalnızca pano çıktısına geçti; transkripsiyonları Cmd+V ile elle yapıştırın.",
+    "transcriptionCopied": "Panoya kopyalandı — yapıştırmak için {{shortcut}} tuşlarına basın."
   },
   "errors": {
     "loadDirectory": "Dizin yüklenirken hata oluştu: {{error}}",

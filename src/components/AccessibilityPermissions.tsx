@@ -1,13 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type } from "@tauri-apps/plugin-os";
-import {
-  checkAccessibilityPermission,
-  requestAccessibilityPermission,
-} from "tauri-plugin-macos-permissions-api";
+import { requestAccessibilityPermission } from "tauri-plugin-macos-permissions-api";
 import { commands } from "@/bindings";
 import { useSettings } from "@/hooks/useSettings";
 import { unwrapCommandResult } from "@/lib/permissions";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
 
 // Define permission state type
 type PermissionState = "request" | "verify" | "granted";
@@ -30,10 +28,13 @@ const initializeAccessibilityInput = async (): Promise<void> => {
 const AccessibilityPermissions: React.FC = () => {
   const { t } = useTranslation();
   const { settings } = useSettings();
-  const [hasAccessibility, setHasAccessibility] = useState<boolean>(false);
   const [isAccessibilityRequired, setIsAccessibilityRequired] = useState(false);
   const [permissionState, setPermissionState] =
     useState<PermissionState>("request");
+  const accessibilityStatus = useAccessibilityStore((state) => state.status);
+  const refreshAccessibilityPermission = useAccessibilityStore(
+    (state) => state.refreshPermission,
+  );
   const transcribeBinding = settings?.bindings?.transcribe?.current_binding;
   const postProcessBinding =
     settings?.bindings?.transcribe_with_post_process?.current_binding;
@@ -43,21 +44,25 @@ const AccessibilityPermissions: React.FC = () => {
   const isMacOS = type() === "macos";
 
   // Check permissions without requesting
-  const checkPermissions = async (): Promise<boolean> => {
-    const hasPermissions: boolean = await checkAccessibilityPermission();
+  const checkPermissions = useCallback(async (): Promise<boolean> => {
+    const hasPermissions = await refreshAccessibilityPermission();
 
-    if (hasPermissions) {
+    if (hasPermissions && isAccessibilityRequired) {
       await initializeAccessibilityInput();
     }
 
-    setHasAccessibility(hasPermissions);
     setPermissionState(hasPermissions ? "granted" : "verify");
     return hasPermissions;
-  };
+  }, [isAccessibilityRequired, refreshAccessibilityPermission]);
 
   // Handle the unified button action based on current state
   const handleButtonClick = async (): Promise<void> => {
-    if (permissionState === "request") {
+    const actionableState =
+      accessibilityStatus === "denied" && permissionState === "granted"
+        ? "verify"
+        : permissionState;
+
+    if (actionableState === "request") {
       try {
         await requestAccessibilityPermission();
         // After system prompt, transition to verification state
@@ -66,13 +71,12 @@ const AccessibilityPermissions: React.FC = () => {
         console.error("Error requesting permissions:", error);
         setPermissionState("verify");
       }
-    } else if (permissionState === "verify") {
+    } else if (actionableState === "verify") {
       // State is "verify" - check if permission was granted
       try {
         await checkPermissions();
       } catch (error) {
         console.error("Failed to initialize Accessibility features:", error);
-        setHasAccessibility(false);
       }
     }
   };
@@ -85,24 +89,21 @@ const AccessibilityPermissions: React.FC = () => {
       const accessibilityRequired = await commands.macosAccessibilityRequired();
       setIsAccessibilityRequired(accessibilityRequired);
 
-      if (!accessibilityRequired) return;
-
-      const hasPermissions: boolean = await checkAccessibilityPermission();
-      if (hasPermissions) {
+      const hasPermissions = await refreshAccessibilityPermission();
+      if (accessibilityRequired && hasPermissions) {
         await initializeAccessibilityInput();
       }
 
-      setHasAccessibility(hasPermissions);
       setPermissionState(hasPermissions ? "granted" : "request");
     };
 
     initialSetup().catch((error) => {
       console.error("Failed to initialize Accessibility features:", error);
-      setHasAccessibility(false);
       setPermissionState("verify");
     });
   }, [
     isMacOS,
+    refreshAccessibilityPermission,
     settings?.auto_submit,
     settings?.keyboard_implementation,
     settings?.paste_method,
@@ -112,8 +113,26 @@ const AccessibilityPermissions: React.FC = () => {
     cancelBinding,
   ]);
 
-  // Skip when the selected features do not use synthetic input or HandyKeys.
-  if (!isMacOS || !isAccessibilityRequired || hasAccessibility) {
+  // Refresh when the user returns from System Settings.
+  useEffect(() => {
+    if (!isMacOS) return;
+
+    const handleFocus = () => {
+      checkPermissions().catch((error) => {
+        console.error("Failed to refresh Accessibility permission:", error);
+      });
+    };
+
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [checkPermissions, isMacOS]);
+
+  if (
+    !isMacOS ||
+    !isAccessibilityRequired ||
+    accessibilityStatus === "checking" ||
+    accessibilityStatus === "granted"
+  ) {
     return null;
   }
 
@@ -132,7 +151,9 @@ const AccessibilityPermissions: React.FC = () => {
     granted: null,
   };
 
-  const config = buttonConfig[permissionState] as ButtonConfig;
+  const visiblePermissionState =
+    permissionState === "request" ? "request" : "verify";
+  const config = buttonConfig[visiblePermissionState] as ButtonConfig;
 
   return (
     <div className="p-4 w-full rounded-lg border border-mid-gray">

@@ -114,6 +114,8 @@
       "waiting": "Oczekiwanie...",
       "allGranted": "Wszystko gotowe!",
       "minimumModeDescription": "Korzysta ze standardowych skrótów i kopiuje każdą transkrypcję do schowka, aby wkleić ją ręcznie.",
+      "minimumModeWarningTitle": "Kontynuować bez Dostępności?",
+      "minimumModeWarningDescription": "Automatyczne wklejanie i zaawansowane skróty nie będą dostępne. Nadal możesz nagrywać za pomocą Option+Spacja, a Handy skopiuje każdą transkrypcję, aby można ją było wkleić ręcznie za pomocą Cmd+V.",
       "useMinimumPermissions": "Kontynuuj tylko z mikrofonem",
       "errors": {
         "checkFailed": "Nie udało się sprawdzić uprawnień. Spróbuj ponownie.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Nie znaleziono opcji"
   },
   "accessibility": {
-    "permissionsDescription": "Uprawnienie dostępności jest wymagane do automatycznego wprowadzania tekstu lub korzystania z wybranych skrótów klawiszowych.",
-    "openSettings": "Otwórz ustawienia systemowe"
+    "permissionsDescription": "Włącz Dostępność w Ustawieniach systemowych, aby korzystać z automatycznego wprowadzania tekstu i zaawansowanych skrótów klawiszowych.",
+    "openSettings": "Otwórz ustawienia systemowe",
+    "switchedToMinimumMode": "Dostępność nie jest już dostępna. Handy przełączyło się na standardowe skróty i wyjście tylko do schowka; wklejaj transkrypcje ręcznie za pomocą Cmd+V.",
+    "transcriptionCopied": "Skopiowano do schowka — naciśnij {{shortcut}}, aby wkleić."
   },
   "errors": {
     "loadDirectory": "Błąd wczytywania katalogu: {{error}}",

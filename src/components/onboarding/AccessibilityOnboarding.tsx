@@ -14,8 +14,9 @@ import {
   unwrapCommandResult,
 } from "@/lib/permissions";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
 import HandyTextLogo from "../icons/HandyTextLogo";
-import { Keyboard, Mic, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Keyboard, Mic, Check, Loader2 } from "lucide-react";
 
 interface AccessibilityOnboardingProps {
   onComplete: () => void;
@@ -50,6 +51,8 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     microphone: "checking",
   });
   const [isApplyingMinimumPermissions, setIsApplyingMinimumPermissions] =
+    useState(false);
+  const [showMinimumPermissionsWarning, setShowMinimumPermissionsWarning] =
     useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +123,11 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           const accessibilityGranted = requiresAccessibility
             ? await checkAccessibilityPermission()
             : false;
+          if (requiresAccessibility) {
+            useAccessibilityStore
+              .getState()
+              .setPermissionGranted(accessibilityGranted);
+          }
           setAccessibilityRequired(requiresAccessibility);
 
           // Initialize Accessibility-backed input only when it is selected.
@@ -217,6 +225,11 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         const accessibilityGranted = accessibilityRequired
           ? await checkAccessibilityPermission()
           : false;
+        if (accessibilityRequired) {
+          useAccessibilityStore
+            .getState()
+            .setPermissionGranted(accessibilityGranted);
+        }
 
         setPermissions((prev) => {
           const newState = { ...prev };
@@ -298,6 +311,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
 
   const handleGrantAccessibility = async () => {
     try {
+      setShowMinimumPermissionsWarning(false);
       await requestAccessibilityPermission();
       setPermissions((prev) => ({ ...prev, accessibility: "waiting" }));
       startPolling();
@@ -341,6 +355,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         toast.warning(t("settings.debug.keyboardImplementation.bindingsReset"));
       }
 
+      useAccessibilityStore.getState().setPermissionGranted(false);
       await completeOnboarding();
     } catch (error) {
       console.error("Failed to enable minimum-permissions mode:", error);
@@ -478,19 +493,62 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           permissions.microphone === "granted" &&
           permissions.accessibility !== "granted" && (
             <div className="w-full flex flex-col items-center gap-2 pt-1">
-              <p className="text-sm text-text/60 text-center">
-                {t("onboarding.permissions.minimumModeDescription")}
-              </p>
-              <button
-                onClick={handleUseMinimumPermissions}
-                disabled={isApplyingMinimumPermissions}
-                className="px-4 py-2 rounded-lg border border-mid-gray/40 hover:border-logo-primary text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isApplyingMinimumPermissions && (
-                  <Loader2 className="inline-block w-4 h-4 mr-2 animate-spin" />
-                )}
-                {t("onboarding.permissions.useMinimumPermissions")}
-              </button>
+              {!showMinimumPermissionsWarning ? (
+                <>
+                  <p className="text-sm text-text/60 text-center">
+                    {t("onboarding.permissions.minimumModeDescription")}
+                  </p>
+                  <button
+                    onClick={() => setShowMinimumPermissionsWarning(true)}
+                    className="px-4 py-2 rounded-lg border border-mid-gray/40 hover:border-logo-primary text-sm font-medium transition-colors"
+                  >
+                    {t("onboarding.permissions.useMinimumPermissions")}
+                  </button>
+                </>
+              ) : (
+                <div
+                  role="alert"
+                  className="w-full p-4 rounded-lg border border-amber-500/40 bg-amber-500/10"
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle
+                      className="w-5 h-5 mt-0.5 text-amber-400 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <div className="flex-1">
+                      <h3 className="font-medium text-text">
+                        {t("onboarding.permissions.minimumModeWarningTitle")}
+                      </h3>
+                      <p className="mt-1 text-sm text-text/70">
+                        {t(
+                          "onboarding.permissions.minimumModeWarningDescription",
+                        )}
+                      </p>
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button
+                          onClick={() =>
+                            setShowMinimumPermissionsWarning(false)
+                          }
+                          disabled={isApplyingMinimumPermissions}
+                          className="px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors disabled:opacity-50"
+                        >
+                          {t("onboarding.cancel")}
+                        </button>
+                        <button
+                          onClick={handleUseMinimumPermissions}
+                          disabled={isApplyingMinimumPermissions}
+                          className="px-3 py-2 rounded-lg border border-amber-500/50 hover:bg-amber-500/10 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isApplyingMinimumPermissions && (
+                            <Loader2 className="inline-block w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          {t("onboarding.permissions.useMinimumPermissions")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
       </div>

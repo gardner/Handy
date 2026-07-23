@@ -16,6 +16,7 @@ import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
 import { WhatsNewGate } from "./components/whats-new";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
+import { useAccessibilityStore } from "./stores/accessibilityStore";
 import { commands } from "@/bindings";
 import {
   hasRequiredMacOSPermissions,
@@ -84,7 +85,11 @@ function App() {
 
         const accessibilityRequired =
           await commands.macosAccessibilityRequired();
-        if (accessibilityRequired && (await checkAccessibilityPermission())) {
+        const accessibilityGranted = await checkAccessibilityPermission();
+        useAccessibilityStore
+          .getState()
+          .setPermissionGranted(accessibilityGranted);
+        if (accessibilityRequired && accessibilityGranted) {
           unwrapCommandResult(
             await commands.initializeEnigo(),
             "Initialize synthetic input",
@@ -167,6 +172,38 @@ function App() {
     };
   }, [t]);
 
+  // Accessibility can be revoked while Handy is running. The backend safely
+  // tears down advanced input and switches to the minimum-permissions profile;
+  // mirror that transition immediately in the UI.
+  useEffect(() => {
+    const unlisten = listen("macos-accessibility-revoked", async () => {
+      useAccessibilityStore.getState().setPermissionGranted(false);
+      await useSettingsStore.getState().refreshSettings();
+      toast.warning(t("onboarding.permissions.accessibility.title"), {
+        description: t("accessibility.switchedToMinimumMode"),
+      });
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
+  useEffect(() => {
+    const unlisten = listen("transcription-copied", () => {
+      const pasteShortcut = platform() === "macos" ? "Cmd+V" : "Ctrl+V";
+      toast.success(
+        t("accessibility.transcriptionCopied", {
+          shortcut: pasteShortcut,
+        }),
+      );
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for transcription failures and show a toast.
   // The payload is the backend error message (also logged to handy.log).
   useEffect(() => {
@@ -226,8 +263,10 @@ function App() {
               commands.macosAccessibilityRequired(),
               checkMicrophonePermission(),
             ]);
-            const hasAccessibility =
-              !accessibilityRequired || (await checkAccessibilityPermission());
+            const hasAccessibility = await checkAccessibilityPermission();
+            useAccessibilityStore
+              .getState()
+              .setPermissionGranted(hasAccessibility);
 
             if (
               !hasRequiredMacOSPermissions({

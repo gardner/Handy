@@ -273,15 +273,20 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
           </div>
         ) : (
           <div
-            className="px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
-            onClick={startRecording}
+            className={`px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 rounded-md ${
+              disabled
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-logo-primary/10 cursor-pointer hover:border-logo-primary"
+            }`}
+            onClick={disabled ? undefined : startRecording}
+            aria-disabled={disabled}
           >
             {formatKeyCombination(binding.current_binding, osType)}
           </div>
         )}
         <ResetButton
           onClick={() => resetBinding(shortcutId)}
-          disabled={isUpdating(`binding_${shortcutId}`)}
+          disabled={disabled || isUpdating(`binding_${shortcutId}`)}
         />
       </div>
     </SettingContainer>

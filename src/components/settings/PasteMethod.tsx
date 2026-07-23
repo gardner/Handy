@@ -6,6 +6,12 @@ import { Input } from "../ui/Input";
 import { useSettings } from "../../hooks/useSettings";
 import { useOsType } from "../../hooks/useOsType";
 import type { PasteMethod } from "@/bindings";
+import {
+  accessibilityFeatureAvailable,
+  pasteMethodRequiresAccessibility,
+} from "@/lib/accessibility";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
+import { AccessibilityRequiredNote } from "./AccessibilityRequiredNote";
 
 interface PasteMethodProps {
   descriptionMode?: "inline" | "tooltip";
@@ -17,6 +23,7 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
     const { t } = useTranslation();
     const { getSetting, updateSetting, isUpdating } = useSettings();
     const osType = useOsType();
+    const accessibilityStatus = useAccessibilityStore((state) => state.status);
 
     const selectedMethod = (getSetting("paste_method") ||
       "ctrl_v") as PasteMethod;
@@ -30,6 +37,11 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
           label: t("settings.advanced.pasteMethod.options.clipboard", {
             modifier: mod,
           }),
+          disabled: !accessibilityFeatureAvailable(
+            osType,
+            accessibilityStatus,
+            pasteMethodRequiresAccessibility(osType, "ctrl_v"),
+          ),
         },
       ];
 
@@ -39,7 +51,13 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
         options.push({
           value: "direct",
           label: t("settings.advanced.pasteMethod.options.direct"),
-          disabled: osType === "macos",
+          disabled:
+            osType === "macos" ||
+            !accessibilityFeatureAvailable(
+              osType,
+              accessibilityStatus,
+              pasteMethodRequiresAccessibility(osType, "direct"),
+            ),
         });
       }
 
@@ -110,6 +128,9 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
               )}
               disabled={isUpdating("external_script_path")}
             />
+          )}
+          {osType === "macos" && accessibilityStatus === "denied" && (
+            <AccessibilityRequiredNote />
           )}
         </div>
       </SettingContainer>

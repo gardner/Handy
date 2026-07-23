@@ -114,6 +114,8 @@
       "waiting": "En attente...",
       "allGranted": "Tout est prêt !",
       "minimumModeDescription": "Utilise les raccourcis standard et copie chaque transcription dans le presse-papiers pour un collage manuel.",
+      "minimumModeWarningTitle": "Continuer sans l’accessibilité ?",
+      "minimumModeWarningDescription": "Le collage automatique et les raccourcis avancés ne seront pas disponibles. Vous pourrez toujours enregistrer avec Option+Espace, et Handy copiera chaque transcription pour que vous puissiez la coller manuellement avec Cmd+V.",
       "useMinimumPermissions": "Continuer avec le microphone uniquement",
       "errors": {
         "checkFailed": "Échec de la vérification des autorisations. Veuillez réessayer.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Aucune option trouvée"
   },
   "accessibility": {
-    "permissionsDescription": "L’autorisation d’accessibilité est requise pour la saisie automatique de texte ou les raccourcis clavier sélectionnés.",
-    "openSettings": "Ouvrir les Préférences Système"
+    "permissionsDescription": "Activez l’accessibilité dans les Réglages Système pour utiliser la saisie automatique de texte et les raccourcis clavier avancés.",
+    "openSettings": "Ouvrir les Préférences Système",
+    "switchedToMinimumMode": "L’accessibilité n’est plus disponible. Handy est passé aux raccourcis standard et à la sortie dans le presse-papiers uniquement ; collez les transcriptions manuellement avec Cmd+V.",
+    "transcriptionCopied": "Copié dans le presse-papiers — appuyez sur {{shortcut}} pour coller."
   },
   "errors": {
     "loadDirectory": "Erreur lors du chargement du répertoire : {{error}}",

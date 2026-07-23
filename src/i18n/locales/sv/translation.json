@@ -114,6 +114,8 @@
       "waiting": "Väntar...",
       "allGranted": "Allt klart!",
       "minimumModeDescription": "Använder vanliga kortkommandon och kopierar varje transkription till urklipp för manuell inklistring.",
+      "minimumModeWarningTitle": "Fortsätt utan Hjälpmedel?",
+      "minimumModeWarningDescription": "Automatisk inklistring och avancerade kortkommandon kommer inte att vara tillgängliga. Du kan fortfarande spela in med Option+Mellanslag, och Handy kopierar varje transkription så att du kan klistra in den manuellt med Cmd+V.",
       "useMinimumPermissions": "Fortsätt med endast mikrofonåtkomst",
       "errors": {
         "checkFailed": "Misslyckades med att kontrollera behörigheter. Försök igen.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Inga alternativ hittades"
   },
   "accessibility": {
-    "permissionsDescription": "Hjälpmedelsåtkomst krävs för automatisk textinmatning eller de valda kortkommandona.",
-    "openSettings": "Öppna systeminställningar"
+    "permissionsDescription": "Aktivera Hjälpmedel i Systeminställningar för att använda automatisk textinmatning och avancerade kortkommandon.",
+    "openSettings": "Öppna systeminställningar",
+    "switchedToMinimumMode": "Hjälpmedel är inte längre tillgängligt. Handy har växlat till vanliga kortkommandon och endast urklippsutdata; klistra in transkriptioner manuellt med Cmd+V.",
+    "transcriptionCopied": "Kopierat till urklipp — tryck på {{shortcut}} för att klistra in."
   },
   "errors": {
     "loadDirectory": "Fel vid laddning av mapp: {{error}}",

@@ -114,6 +114,8 @@
       "waiting": "Čekání...",
       "allGranted": "Vše připraveno!",
       "minimumModeDescription": "Používá standardní klávesové zkratky a každou transkripci zkopíruje do schránky k ručnímu vložení.",
+      "minimumModeWarningTitle": "Pokračovat bez Zpřístupnění?",
+      "minimumModeWarningDescription": "Automatické vkládání a pokročilé klávesové zkratky nebudou dostupné. Stále můžete nahrávat pomocí Option+Mezerník a Handy zkopíruje každou transkripci, abyste ji mohli ručně vložit pomocí Cmd+V.",
       "useMinimumPermissions": "Pokračovat pouze s mikrofonem",
       "errors": {
         "checkFailed": "Nepodařilo se zkontrolovat oprávnění. Zkuste to prosím znovu.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Nenalezeny žádné možnosti"
   },
   "accessibility": {
-    "permissionsDescription": "Zpřístupnění je nutné pro automatické zadávání textu nebo vybrané klávesové zkratky.",
-    "openSettings": "Otevřít Nastavení systému"
+    "permissionsDescription": "Chcete-li používat automatické zadávání textu a pokročilé klávesové zkratky, povolte Zpřístupnění v Nastavení systému.",
+    "openSettings": "Otevřít Nastavení systému",
+    "switchedToMinimumMode": "Zpřístupnění již není dostupné. Handy přešlo na standardní klávesové zkratky a výstup pouze do schránky; transkripce vkládejte ručně pomocí Cmd+V.",
+    "transcriptionCopied": "Zkopírováno do schránky — vložte pomocí {{shortcut}}."
   },
   "errors": {
     "loadDirectory": "Chyba při načítání adresáře: {{error}}",

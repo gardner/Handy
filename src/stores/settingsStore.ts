@@ -73,6 +73,8 @@ const DEFAULT_AUDIO_DEVICE: AudioDevice = {
   is_default: true,
 };
 
+let settingsEventListenersInitialized = false;
+
 const settingUpdaters: {
   [K in keyof Settings]?: (value: Settings[K]) => Promise<unknown>;
 } = {
@@ -595,11 +597,25 @@ export const useSettingsStore = create<SettingsStore>()(
         checkCustomSounds(),
       ]);
 
-      // Re-fetch settings when the backend changes them (e.g. language
-      // reset during model switch). The backend is the source of truth.
-      listen("model-state-changed", () => {
-        get().refreshSettings();
-      });
+      // Re-fetch settings when the backend changes them. The store is a
+      // singleton, but several components can request initialization at once,
+      // so install these app-lifetime listeners only once.
+      if (!settingsEventListenersInitialized) {
+        settingsEventListenersInitialized = true;
+        try {
+          await Promise.all([
+            listen("model-state-changed", () => {
+              get().refreshSettings();
+            }),
+            listen("settings-changed", () => {
+              get().refreshSettings();
+            }),
+          ]);
+        } catch (error) {
+          settingsEventListenersInitialized = false;
+          console.error("Failed to initialize settings listeners:", error);
+        }
+      }
     },
   })),
 );

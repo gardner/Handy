@@ -114,6 +114,8 @@
       "waiting": "等待中...",
       "allGranted": "全部完成！",
       "minimumModeDescription": "使用标准快捷键，并将每次转录内容复制到剪贴板，以便手动粘贴。",
+      "minimumModeWarningTitle": "要在未启用辅助功能的情况下继续吗？",
+      "minimumModeWarningDescription": "自动粘贴和高级快捷键将无法使用。你仍可使用 Option+Space 录音，Handy 会复制每次转录内容，以便你使用 Cmd+V 手动粘贴。",
       "useMinimumPermissions": "仅授予麦克风权限并继续",
       "errors": {
         "checkFailed": "检查权限失败。请重试。",
@@ -595,8 +597,10 @@
     "noOptionsFound": "未找到选项"
   },
   "accessibility": {
-    "permissionsDescription": "自动输入文本或使用所选的键盘快捷键需要辅助功能权限。",
-    "openSettings": "打开系统设置"
+    "permissionsDescription": "若要使用自动文本输入和高级键盘快捷键，请在系统设置中启用辅助功能。",
+    "openSettings": "打开系统设置",
+    "switchedToMinimumMode": "辅助功能已不可用。Handy 已切换为标准快捷键和仅输出到剪贴板；请使用 Cmd+V 手动粘贴转录内容。",
+    "transcriptionCopied": "已复制到剪贴板 — 按 {{shortcut}} 即可粘贴。"
   },
   "errors": {
     "loadDirectory": "加载目录时出错: {{error}}",

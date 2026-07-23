@@ -2,6 +2,13 @@ import React from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { GlobalShortcutInput } from "./GlobalShortcutInput";
 import { HandyKeysShortcutInput } from "./HandyKeysShortcutInput";
+import { useOsType } from "@/hooks/useOsType";
+import {
+  accessibilityFeatureAvailable,
+  keyboardImplementationRequiresAccessibility,
+} from "@/lib/accessibility";
+import { useAccessibilityStore } from "@/stores/accessibilityStore";
+import { AccessibilityRequiredNote } from "./AccessibilityRequiredNote";
 
 interface ShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
@@ -19,11 +26,36 @@ interface ShortcutInputProps {
  */
 export const ShortcutInput: React.FC<ShortcutInputProps> = (props) => {
   const { getSetting } = useSettings();
+  const osType = useOsType();
+  const accessibilityStatus = useAccessibilityStore((state) => state.status);
   const keyboardImplementation = getSetting("keyboard_implementation");
 
   // Default to Tauri implementation if not set
   if (keyboardImplementation === "handy_keys") {
-    return <HandyKeysShortcutInput {...props} />;
+    const accessibilityUnavailable = !accessibilityFeatureAvailable(
+      osType,
+      accessibilityStatus,
+      keyboardImplementationRequiresAccessibility(
+        osType,
+        keyboardImplementation,
+      ),
+    );
+
+    return (
+      <>
+        <HandyKeysShortcutInput
+          {...props}
+          disabled={props.disabled || accessibilityUnavailable}
+        />
+        {accessibilityUnavailable &&
+          osType === "macos" &&
+          accessibilityStatus === "denied" && (
+            <div className="px-4 py-2">
+              <AccessibilityRequiredNote />
+            </div>
+          )}
+      </>
+    );
   }
 
   return <GlobalShortcutInput {...props} />;

@@ -114,6 +114,8 @@
       "waiting": "Venter...",
       "allGranted": "Alt er klar!",
       "minimumModeDescription": "Bruger standardgenveje og kopierer hver transskription til udklipsholderen, så den kan indsættes manuelt.",
+      "minimumModeWarningTitle": "Fortsæt uden Tilgængelighed?",
+      "minimumModeWarningDescription": "Automatisk indsættelse og avancerede tastaturgenveje vil ikke være tilgængelige. Du kan stadig optage med Option+Mellemrum, og Handy kopierer hver transskription, så du kan indsætte den manuelt med Cmd+V.",
       "useMinimumPermissions": "Fortsæt kun med mikrofon",
       "errors": {
         "checkFailed": "Kunne ikke tjekke tilladelser. Prøv igen.",
@@ -598,8 +600,10 @@
     "noOptionsFound": "Ingen muligheder fundet"
   },
   "accessibility": {
-    "permissionsDescription": "Tilgængelighedsadgang er nødvendig for automatisk tekstindtastning eller de valgte tastaturgenveje.",
-    "openSettings": "Åbn systemindstillinger"
+    "permissionsDescription": "Aktivér Tilgængelighed i Systemindstillinger for at bruge automatisk tekstindtastning og avancerede tastaturgenveje.",
+    "openSettings": "Åbn systemindstillinger",
+    "switchedToMinimumMode": "Tilgængelighed er ikke længere tilgængelig. Handy skiftede til standardgenveje og kun udklipsholder; indsæt transskriptioner manuelt med Cmd+V.",
+    "transcriptionCopied": "Kopieret til udklipsholder — tryk på {{shortcut}} for at indsætte."
   },
   "errors": {
     "loadDirectory": "Fejl ved indlæsning af mappe: {{error}}",

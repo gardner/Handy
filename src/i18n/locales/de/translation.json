@@ -114,6 +114,8 @@
       "waiting": "Warten...",
       "allGranted": "Alles bereit!",
       "minimumModeDescription": "Verwendet Standard-Tastenkürzel und kopiert jede Transkription zum manuellen Einfügen in die Zwischenablage.",
+      "minimumModeWarningTitle": "Ohne Bedienungshilfen fortfahren?",
+      "minimumModeWarningDescription": "Automatisches Einfügen und erweiterte Tastenkürzel sind dann nicht verfügbar. Du kannst weiterhin mit Option+Leertaste aufnehmen; Handy kopiert jede Transkription, damit du sie manuell mit Cmd+V einfügen kannst.",
       "useMinimumPermissions": "Nur mit Mikrofon fortfahren",
       "errors": {
         "checkFailed": "Berechtigungsprüfung fehlgeschlagen. Bitte erneut versuchen.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Keine Optionen gefunden"
   },
   "accessibility": {
-    "permissionsDescription": "Der Bedienungshilfen-Zugriff ist für die automatische Texteingabe oder die ausgewählten Tastenkürzel erforderlich.",
-    "openSettings": "Systemeinstellungen öffnen"
+    "permissionsDescription": "Aktiviere Bedienungshilfen in den Systemeinstellungen, um automatische Texteingabe und erweiterte Tastenkürzel zu verwenden.",
+    "openSettings": "Systemeinstellungen öffnen",
+    "switchedToMinimumMode": "Bedienungshilfen sind nicht mehr verfügbar. Handy verwendet jetzt Standard-Tastenkürzel und gibt nur in die Zwischenablage aus; füge Transkriptionen manuell mit Cmd+V ein.",
+    "transcriptionCopied": "In die Zwischenablage kopiert — mit {{shortcut}} einfügen."
   },
   "errors": {
     "loadDirectory": "Fehler beim Laden des Verzeichnisses: {{error}}",

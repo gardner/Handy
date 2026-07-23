@@ -114,6 +114,8 @@
       "waiting": "In attesa...",
       "allGranted": "Tutto pronto!",
       "minimumModeDescription": "Usa le scorciatoie standard e copia ogni trascrizione negli appunti per incollarla manualmente.",
+      "minimumModeWarningTitle": "Continuare senza Accessibilità?",
+      "minimumModeWarningDescription": "L'incolla automatico e le scorciatoie avanzate non saranno disponibili. Potrai continuare a registrare con Option+Spazio e Handy copierà ogni trascrizione, così potrai incollarla manualmente con Cmd+V.",
       "useMinimumPermissions": "Continua solo con il microfono",
       "errors": {
         "checkFailed": "Impossibile verificare i permessi. Riprova.",
@@ -595,8 +597,10 @@
     "noOptionsFound": "Nessuna opzione trovata"
   },
   "accessibility": {
-    "permissionsDescription": "Il permesso di accessibilità è necessario per l'inserimento automatico del testo o per le scorciatoie da tastiera selezionate.",
-    "openSettings": "Apri Impostazioni di Sistema"
+    "permissionsDescription": "Attiva Accessibilità nelle Impostazioni di Sistema per usare l'inserimento automatico del testo e le scorciatoie da tastiera avanzate.",
+    "openSettings": "Apri Impostazioni di Sistema",
+    "switchedToMinimumMode": "Accessibilità non è più disponibile. Handy è passato alle scorciatoie standard e all'output solo negli appunti; incolla manualmente le trascrizioni con Cmd+V.",
+    "transcriptionCopied": "Copiato negli appunti — premi {{shortcut}} per incollare."
   },
   "errors": {
     "loadDirectory": "Errore di caricamento cartella: {{error}}",
