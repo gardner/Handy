@@ -3,7 +3,7 @@ pub mod history;
 pub mod models;
 pub mod transcription;
 
-use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
+use crate::settings::{get_settings, update_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -69,9 +69,9 @@ pub fn set_log_level(app: AppHandle, level: LogLevel) -> Result<(), String> {
         std::sync::atomic::Ordering::Relaxed,
     );
 
-    let mut settings = get_settings(&app);
-    settings.log_level = level;
-    write_settings(&app, settings);
+    update_settings(&app, |settings| {
+        settings.log_level = level;
+    });
 
     Ok(())
 }
@@ -143,6 +143,8 @@ pub fn check_apple_intelligence_available() -> bool {
 pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
     use crate::input::EnigoState;
 
+    crate::shortcut::require_macos_accessibility("automatic paste and submission")?;
+
     // Check if already initialized
     if app.try_state::<EnigoState>().is_some() {
         log::debug!("Enigo already initialized");
@@ -180,18 +182,5 @@ pub struct ShortcutsInitialized;
 #[specta::specta]
 #[tauri::command]
 pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
-    // Check if already initialized
-    if app.try_state::<ShortcutsInitialized>().is_some() {
-        log::debug!("Shortcuts already initialized");
-        return Ok(());
-    }
-
-    // Initialize shortcuts
-    crate::shortcut::init_shortcuts(&app);
-
-    // Mark as initialized
-    app.manage(ShortcutsInitialized);
-
-    log::info!("Shortcuts initialized successfully");
-    Ok(())
+    crate::shortcut::init_shortcuts(&app)
 }

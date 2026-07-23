@@ -1,7 +1,7 @@
 use super::model_capabilities::{
     CapabilityProbe, CapabilityProber, Compatibility, GgufHeaderProber,
 };
-use crate::settings::{get_settings, write_settings};
+use crate::settings::get_settings;
 use anyhow::Result;
 use flate2::read::GzDecoder;
 use futures_util::StreamExt;
@@ -1361,7 +1361,7 @@ impl ModelManager {
     }
 
     fn auto_select_model_if_needed(&self) -> Result<()> {
-        let mut settings = get_settings(&self.app_handle);
+        let settings = get_settings(&self.app_handle);
 
         // Clear stale selection: selected model is set but doesn't exist
         // in available_models (e.g. deleted custom model file)
@@ -1371,14 +1371,24 @@ impl ModelManager {
             drop(models);
 
             if !exists {
+                let stale_model_id = settings.selected_model.clone();
                 info!(
                     "Selected model '{}' not found in available models, clearing selection",
-                    settings.selected_model
+                    stale_model_id
                 );
-                settings.selected_model = String::new();
-                write_settings(&self.app_handle, settings.clone());
+                crate::settings::update_settings(&self.app_handle, |latest| {
+                    // Do not erase a model the user selected while this rescan
+                    // was checking the stale selection.
+                    if latest.selected_model == stale_model_id {
+                        latest.selected_model.clear();
+                    }
+                });
             }
         }
+
+        // Refresh after the conditional stale-selection update. Settings can
+        // also change while a model rescan or download is in flight.
+        let settings = get_settings(&self.app_handle);
 
         // If onboarding is still pending, do not auto-select just because a
         // compatible model exists on disk or in the shared HF cache. The
@@ -1401,12 +1411,13 @@ impl ModelManager {
                     available_model.id, available_model.name
                 );
 
-                // Update settings with the selected model
-                let mut updated_settings = settings;
-                updated_settings.selected_model = available_model.id.clone();
-                write_settings(&self.app_handle, updated_settings);
-
-                info!("Successfully auto-selected model: {}", available_model.id);
+                crate::settings::update_settings(&self.app_handle, |latest| {
+                    // Preserve a user selection or an onboarding reset that
+                    // raced with this long-running model operation.
+                    if latest.onboarding_completed && latest.selected_model.is_empty() {
+                        latest.selected_model = available_model.id.clone();
+                    }
+                });
             }
         }
 

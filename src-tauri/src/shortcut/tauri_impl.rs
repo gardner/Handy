@@ -4,17 +4,49 @@
 //! global-shortcut plugin.
 
 use log::{error, warn};
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, Mutex, MutexGuard},
+};
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-#[cfg(not(target_os = "linux"))]
-use crate::settings::get_settings;
 use crate::settings::{self, ShortcutBinding};
 
 use super::handler::handle_shortcut_event;
 
+#[derive(Default)]
+struct ShortcutRegistrationTracker {
+    bindings: HashMap<String, ShortcutBinding>,
+}
+
+impl ShortcutRegistrationTracker {
+    fn track(&mut self, binding: ShortcutBinding) {
+        self.bindings
+            .insert(binding.current_binding.clone(), binding);
+    }
+
+    fn forget(&mut self, binding: &ShortcutBinding) {
+        self.bindings.remove(&binding.current_binding);
+    }
+
+    fn snapshot(&self) -> Vec<ShortcutBinding> {
+        self.bindings.values().cloned().collect()
+    }
+}
+
+static REGISTERED_SHORTCUTS: LazyLock<Mutex<ShortcutRegistrationTracker>> =
+    LazyLock::new(|| Mutex::new(ShortcutRegistrationTracker::default()));
+
+fn registered_shortcuts() -> MutexGuard<'static, ShortcutRegistrationTracker> {
+    REGISTERED_SHORTCUTS.lock().unwrap_or_else(|poisoned| {
+        warn!("Tauri shortcut registration tracker was poisoned; recovering its contents");
+        poisoned.into_inner()
+    })
+}
+
 /// Initialize shortcuts using Tauri's global-shortcut plugin
-pub fn init_shortcuts(app: &AppHandle) {
+pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
 
@@ -33,10 +65,22 @@ pub fn init_shortcuts(app: &AppHandle) {
             .cloned()
             .unwrap_or(default_binding);
 
-        if let Err(e) = register_shortcut(app, binding) {
-            error!("Failed to register shortcut {} during init: {}", id, e);
+        if let Err(error) = register_shortcut(app, binding.clone()) {
+            let initialization_error = format!(
+                "Failed to register shortcut '{}' during initialization: {}",
+                id, error
+            );
+            if let Err(teardown_error) = unregister_all_shortcuts(app) {
+                return Err(format!(
+                    "{initialization_error}; failed to tear down the partial Tauri backend \
+                     ({teardown_error})"
+                ));
+            }
+            return Err(initialization_error);
         }
     }
+
+    Ok(())
 }
 
 /// Validate a shortcut string for the Tauri global-shortcut implementation.
@@ -125,6 +169,7 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
             error_msg
         })?;
 
+    registered_shortcuts().track(binding);
     Ok(())
 }
 
@@ -151,48 +196,65 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
         error_msg
     })?;
 
+    registered_shortcuts().forget(&binding);
     Ok(())
 }
 
-/// Register the cancel shortcut (called when recording starts)
-pub fn register_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-        return;
+/// Unregister every shortcut owned by Tauri's global-shortcut backend.
+///
+/// Each successful registration is tracked independently of persisted settings.
+/// Failed native unregistrations stay tracked, so a later fallback retry cannot
+/// mistake an emptied third-party registry for successful teardown.
+pub fn unregister_all_shortcuts(app: &AppHandle) -> Result<(), String> {
+    let candidates = registered_shortcuts().snapshot();
+    let mut teardown_errors = Vec::new();
+
+    for binding in candidates {
+        let binding_label = binding.current_binding.clone();
+        if let Err(error) = unregister_shortcut(app, binding) {
+            teardown_errors.push(format!("'{binding_label}': {error}"));
+        }
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Err(e) = register_shortcut(&app_clone, cancel_binding) {
-                    error!("Failed to register cancel shortcut: {}", e);
-                }
-            }
-        });
+    if teardown_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Tauri shortcut backend teardown was incomplete: {}",
+            teardown_errors.join("; ")
+        ))
     }
 }
 
-/// Unregister the cancel shortcut (called when recording stops)
-pub fn unregister_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-        return;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding(id: &str, current_binding: &str) -> ShortcutBinding {
+        ShortcutBinding {
+            id: id.into(),
+            name: id.into(),
+            description: id.into(),
+            default_binding: current_binding.into(),
+            current_binding: current_binding.into(),
+        }
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                // We ignore errors here as it might already be unregistered
-                let _ = unregister_shortcut(&app_clone, cancel_binding);
-            }
-        });
+    #[test]
+    fn registration_tracker_retains_stale_bindings_until_each_is_removed() {
+        let mut tracker = ShortcutRegistrationTracker::default();
+        let old_binding = binding("transcribe", "option+space");
+        let new_binding = binding("transcribe", "command+shift+space");
+
+        tracker.track(old_binding.clone());
+        tracker.track(new_binding.clone());
+
+        assert_eq!(tracker.snapshot().len(), 2);
+
+        tracker.forget(&new_binding);
+
+        let remaining = tracker.snapshot();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].current_binding, old_binding.current_binding);
     }
 }

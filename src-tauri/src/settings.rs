@@ -11,6 +11,8 @@ use tauri_plugin_store::StoreExt;
 pub const APPLE_INTELLIGENCE_PROVIDER_ID: &str = "apple_intelligence";
 pub const APPLE_INTELLIGENCE_DEFAULT_MODEL_ID: &str = "Apple Intelligence";
 
+static SETTINGS_UPDATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
@@ -965,11 +967,31 @@ impl AppSettings {
     /// Select a usable profile that avoids macOS Accessibility.
     /// Transcriptions remain available in history and are copied to the
     /// clipboard for the user to paste manually.
-    pub fn use_minimum_permissions_profile(&mut self) {
+    pub fn use_minimum_permissions_profile(&mut self) -> Vec<String> {
         self.keyboard_implementation = KeyboardImplementation::Tauri;
         self.paste_method = PasteMethod::None;
         self.clipboard_handling = ClipboardHandling::CopyToClipboard;
         self.auto_submit = false;
+
+        let defaults = get_default_settings().bindings;
+        let mut reset_bindings = Vec::new();
+
+        // Tauri's ordinary shortcuts do not need Accessibility on macOS, but
+        // media keys do. Preserve valid custom ordinary shortcuts and repair
+        // missing, invalid, and media-key bindings.
+        for (id, default_binding) in defaults {
+            let changed = self.bindings.get(&id).is_none_or(|binding| {
+                !tauri_shortcut_is_permission_free_on_macos(&binding.current_binding)
+            });
+
+            if changed {
+                self.bindings.insert(id.clone(), default_binding);
+                reset_bindings.push(id);
+            }
+        }
+
+        reset_bindings.sort();
+        reset_bindings
     }
 
     pub fn active_post_process_provider(&self) -> Option<&PostProcessProvider> {
@@ -1004,6 +1026,11 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 }
 
 pub fn get_settings(app: &AppHandle) -> AppSettings {
+    let _guard = settings_update_guard();
+    load_settings_unlocked(app)
+}
+
+fn load_settings_unlocked(app: &AppHandle) -> AppSettings {
     let store = app
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
@@ -1034,18 +1061,18 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
         }
 
         if updated {
-            store.set("settings", serde_json::to_value(&settings).unwrap());
+            persist_settings(app, &settings);
         }
 
         settings
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).unwrap());
+        persist_settings(app, &default_settings);
         default_settings
     };
 
     if ensure_post_process_defaults(&mut settings) {
-        store.set("settings", serde_json::to_value(&settings).unwrap());
+        persist_settings(app, &settings);
     }
 
     settings
@@ -1151,12 +1178,39 @@ fn apply_settings_migrations(
     updated
 }
 
-pub fn write_settings(app: &AppHandle, settings: AppSettings) {
+fn persist_settings(app: &AppHandle, settings: &AppSettings) {
     let store = app
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
 
-    store.set("settings", serde_json::to_value(&settings).unwrap());
+    store.set("settings", serde_json::to_value(settings).unwrap());
+}
+
+fn settings_update_guard() -> std::sync::MutexGuard<'static, ()> {
+    SETTINGS_UPDATE_LOCK.lock().unwrap_or_else(|poisoned| {
+        warn!("Settings update lock was poisoned; recovering");
+        poisoned.into_inner()
+    })
+}
+
+fn apply_settings_update<R>(
+    mut settings: AppSettings,
+    update: impl FnOnce(&mut AppSettings) -> R,
+) -> (AppSettings, R) {
+    let result = update(&mut settings);
+    (settings, result)
+}
+
+/// Atomically mutate the latest stored settings.
+///
+/// Keep closures fast and side-effect free: callers may hold the shortcut
+/// transition lock, and the settings lock remains held through persistence.
+pub fn update_settings<R>(app: &AppHandle, update: impl FnOnce(&mut AppSettings) -> R) -> R {
+    let _guard = settings_update_guard();
+    let current = load_settings_unlocked(app);
+    let (updated, result) = apply_settings_update(current, update);
+    persist_settings(app, &updated);
+    result
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
@@ -1550,6 +1604,42 @@ mod tests {
         assert_eq!(settings.selected_model, "keep-this-model");
         assert_eq!(settings.app_language, "fr");
         assert!(!settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn atomic_updates_preserve_the_minimum_permissions_profile() {
+        let mut initial_settings = get_default_settings();
+        initial_settings
+            .bindings
+            .get_mut("transcribe")
+            .unwrap()
+            .current_binding = "MediaPlayPause".into();
+
+        let (minimum_settings, reset_bindings) = apply_settings_update(
+            initial_settings,
+            AppSettings::use_minimum_permissions_profile,
+        );
+        let (updated_settings, ()) = apply_settings_update(minimum_settings, |settings| {
+            settings.audio_feedback = true;
+        });
+
+        assert_eq!(reset_bindings, vec!["transcribe"]);
+        assert!(updated_settings.audio_feedback);
+        assert_eq!(
+            updated_settings.keyboard_implementation,
+            KeyboardImplementation::Tauri
+        );
+        assert_eq!(updated_settings.paste_method, PasteMethod::None);
+        assert_eq!(
+            updated_settings.clipboard_handling,
+            ClipboardHandling::CopyToClipboard
+        );
+        assert!(!updated_settings.auto_submit);
+        assert_eq!(
+            updated_settings.bindings["transcribe"].current_binding,
+            get_default_settings().bindings["transcribe"].current_binding
+        );
+        assert!(!updated_settings.requires_macos_accessibility());
     }
 
     #[cfg(not(target_os = "linux"))]

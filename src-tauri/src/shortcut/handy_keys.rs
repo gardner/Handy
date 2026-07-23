@@ -42,6 +42,9 @@ use crate::settings::{self, get_settings, ShortcutBinding};
 
 use super::handler::handle_shortcut_event;
 
+const MANAGER_STARTUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const MANAGER_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Commands that can be sent to the hotkey manager thread
 enum ManagerCommand {
     Register {
@@ -56,12 +59,71 @@ enum ManagerCommand {
     Shutdown,
 }
 
-/// State for the handy-keys shortcut manager
+struct RuntimeSlot<T> {
+    active: Option<T>,
+}
+
+impl<T> Default for RuntimeSlot<T> {
+    fn default() -> Self {
+        Self { active: None }
+    }
+}
+
+impl<T> RuntimeSlot<T> {
+    fn install(&mut self, runtime: T) -> Result<(), T> {
+        if self.active.is_some() {
+            return Err(runtime);
+        }
+        self.active = Some(runtime);
+        Ok(())
+    }
+
+    fn get(&self) -> Option<&T> {
+        self.active.as_ref()
+    }
+
+    fn get_mut(&mut self) -> Option<&mut T> {
+        self.active.as_mut()
+    }
+
+    fn take(&mut self) -> Option<T> {
+        self.active.take()
+    }
+
+    fn is_running(&self) -> bool {
+        self.active.is_some()
+    }
+}
+
+fn take_runtime<T>(slot: &Mutex<RuntimeSlot<T>>) -> Result<Option<T>, String> {
+    slot.lock()
+        .map_err(|_| "Failed to lock handy-keys runtime".to_string())
+        .map(|mut slot| slot.take())
+}
+
+/// Permanently managed controller for the restartable handy-keys runtime.
+///
+/// Tauri managed state itself cannot be safely removed at runtime. Keeping the
+/// listener inside an `Option` lets us drop the actual event-tap owner whenever
+/// the user switches to the permission-free Tauri backend.
 pub struct HandyKeysState {
+    runtime: Mutex<RuntimeSlot<HandyKeysRuntime>>,
+}
+
+impl Default for HandyKeysState {
+    fn default() -> Self {
+        Self {
+            runtime: Mutex::new(RuntimeSlot::default()),
+        }
+    }
+}
+
+/// Active handy-keys listener and manager thread.
+struct HandyKeysRuntime {
     /// Channel to send commands to the manager thread (wrapped in Mutex for Sync)
     command_sender: Mutex<Sender<ManagerCommand>>,
-    /// Handle to the manager thread (wrapped in Mutex for Sync, allows proper join on drop)
-    thread_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Handle to the manager thread, joined when the runtime is stopped.
+    thread_handle: Option<JoinHandle<()>>,
     /// Recording listener for UI key capture (only active during recording)
     recording_listener: Mutex<Option<KeyboardListener>>,
     /// Flag indicating if we're in recording mode
@@ -70,6 +132,8 @@ pub struct HandyKeysState {
     recording_binding_id: Mutex<Option<String>>,
     /// Flag to stop recording loop
     recording_running: Arc<AtomicBool>,
+    #[cfg(target_os = "macos")]
+    accessibility_monitor_running: Arc<AtomicBool>,
 }
 
 /// Key event sent to frontend during recording mode
@@ -85,39 +149,68 @@ pub struct FrontendKeyEvent {
     pub hotkey_string: String,
 }
 
-impl HandyKeysState {
-    /// Create a new HandyKeysState
-    pub fn new(app: AppHandle) -> Result<Self, String> {
+impl HandyKeysRuntime {
+    /// Create a runtime and wait until its native listener is ready.
+    fn new(app: AppHandle) -> Result<Self, String> {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ManagerCommand>();
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
-        // Start the manager thread
         let app_clone = app.clone();
         let thread_handle = thread::spawn(move || {
-            Self::manager_thread(cmd_rx, app_clone);
+            Self::manager_thread(cmd_rx, app_clone, ready_tx);
         });
+
+        match ready_rx.recv_timeout(MANAGER_STARTUP_TIMEOUT) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                let _ = thread_handle.join();
+                return Err(error);
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = thread_handle.join();
+                return Err("handy-keys manager exited before initialization completed".into());
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Dropping the handle detaches a constructor that is stuck in
+                // native code; dropping cmd_tx below makes it exit if it later
+                // reaches the command loop.
+                return Err("Timed out while initializing the handy-keys manager".into());
+            }
+        }
 
         Ok(Self {
             command_sender: Mutex::new(cmd_tx),
-            thread_handle: Mutex::new(Some(thread_handle)),
+            thread_handle: Some(thread_handle),
             recording_listener: Mutex::new(None),
             is_recording: AtomicBool::new(false),
             recording_binding_id: Mutex::new(None),
             recording_running: Arc::new(AtomicBool::new(false)),
+            #[cfg(target_os = "macos")]
+            accessibility_monitor_running: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// The main manager thread - owns the HotkeyManager and processes commands
-    fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
+    fn manager_thread(
+        cmd_rx: Receiver<ManagerCommand>,
+        app: AppHandle,
+        ready: mpsc::SyncSender<Result<(), String>>,
+    ) {
         info!("handy-keys manager thread started");
 
         // Create the HotkeyManager in this thread
         let manager = match HotkeyManager::new_with_blocking() {
             Ok(m) => m,
             Err(e) => {
-                error!("Failed to create HotkeyManager: {}", e);
+                let error = format!("Failed to create HotkeyManager: {}", e);
+                error!("{}", error);
+                let _ = ready.send(Err(error));
                 return;
             }
         };
+        if ready.send(Ok(())).is_err() {
+            return;
+        }
 
         // Maps binding IDs to HotkeyIds and hotkey strings
         let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
@@ -239,8 +332,8 @@ impl HandyKeysState {
             })
             .map_err(|_| "Failed to send register command")?;
 
-        rx.recv()
-            .map_err(|_| "Failed to receive register response")?
+        rx.recv_timeout(MANAGER_COMMAND_TIMEOUT)
+            .map_err(|error| format!("Failed to receive register response: {error}"))?
     }
 
     /// Unregister a shortcut binding
@@ -255,8 +348,8 @@ impl HandyKeysState {
             })
             .map_err(|_| "Failed to send unregister command")?;
 
-        rx.recv()
-            .map_err(|_| "Failed to receive unregister response")?
+        rx.recv_timeout(MANAGER_COMMAND_TIMEOUT)
+            .map_err(|error| format!("Failed to receive unregister response: {error}"))?
     }
 
     /// Start recording mode for a specific binding
@@ -291,47 +384,11 @@ impl HandyKeysState {
         let app_clone = app.clone();
         let recording_running = Arc::clone(&self.recording_running);
         thread::spawn(move || {
-            Self::recording_loop(app_clone, recording_running);
+            HandyKeysState::recording_loop(app_clone, recording_running);
         });
 
         debug!("Started handy-keys recording mode");
         Ok(())
-    }
-
-    /// Recording loop - emits key events to frontend during recording
-    fn recording_loop(app: AppHandle, running: Arc<AtomicBool>) {
-        while running.load(Ordering::SeqCst) {
-            let event = {
-                let state = match app.try_state::<HandyKeysState>() {
-                    Some(s) => s,
-                    None => break,
-                };
-                let listener = state.recording_listener.lock().ok();
-                listener.as_ref().and_then(|l| l.as_ref()?.try_recv())
-            };
-
-            if let Some(key_event) = event {
-                // Convert to frontend-friendly format
-                let frontend_event = FrontendKeyEvent {
-                    modifiers: modifiers_to_strings(key_event.modifiers),
-                    key: key_event.key.map(|k| k.to_string().to_lowercase()),
-                    is_key_down: key_event.is_key_down,
-                    hotkey_string: key_event
-                        .as_hotkey()
-                        .map(|h| h.to_handy_string())
-                        .unwrap_or_default(),
-                };
-
-                // Emit to frontend
-                if let Err(e) = app.emit("handy-keys-event", &frontend_event) {
-                    error!("Failed to emit key event: {}", e);
-                }
-            } else {
-                thread::sleep(std::time::Duration::from_millis(10));
-            }
-        }
-
-        debug!("Recording loop ended");
     }
 
     /// Stop recording mode
@@ -359,8 +416,14 @@ impl HandyKeysState {
     }
 }
 
-impl Drop for HandyKeysState {
+impl Drop for HandyKeysRuntime {
     fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        {
+            self.accessibility_monitor_running
+                .store(false, Ordering::SeqCst);
+        }
+
         // Signal recording to stop
         self.recording_running.store(false, Ordering::SeqCst);
         self.is_recording.store(false, Ordering::SeqCst);
@@ -371,11 +434,211 @@ impl Drop for HandyKeysState {
         }
 
         // Wait for the manager thread to finish
-        if let Ok(mut handle) = self.thread_handle.lock() {
-            if let Some(h) = handle.take() {
-                let _ = h.join();
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl HandyKeysState {
+    fn start(&self, app: &AppHandle) -> Result<(), String> {
+        {
+            let runtime = self
+                .runtime
+                .lock()
+                .map_err(|_| "Failed to lock handy-keys runtime")?;
+            if runtime.is_running() {
+                return Ok(());
             }
         }
+
+        // Build and register everything before publishing the runtime. Any
+        // failure drops this local value and tears down its native listener.
+        let runtime = HandyKeysRuntime::new(app.clone())?;
+        let default_bindings = settings::get_default_settings().bindings;
+        let user_settings = settings::load_or_create_app_settings(app);
+
+        for (id, default_binding) in default_bindings {
+            if id == "cancel"
+                || (id == "transcribe_with_post_process" && !user_settings.post_process_enabled)
+            {
+                continue;
+            }
+
+            let binding = user_settings
+                .bindings
+                .get(&id)
+                .cloned()
+                .unwrap_or(default_binding);
+            runtime
+                .register(&binding)
+                .map_err(|error| format!("Failed to register shortcut '{}': {}", id, error))?;
+        }
+
+        self.runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?
+            .install(runtime)
+            .map_err(|_| "handy-keys runtime was initialized concurrently".to_string())?;
+
+        #[cfg(target_os = "macos")]
+        if let Err(error) = self.start_accessibility_monitor(app) {
+            let _ = self.stop();
+            return Err(error);
+        }
+
+        Ok(())
+    }
+
+    pub fn stop(&self) -> Result<bool, String> {
+        // Take ownership while locked, then release the controller mutex before
+        // Drop joins worker threads. The revocation monitor may itself be
+        // waiting on this mutex to discover that another path already stopped.
+        let runtime = take_runtime(&self.runtime)?;
+        let stopped = runtime.is_some();
+        drop(runtime);
+        Ok(stopped)
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.runtime
+            .lock()
+            .is_ok_and(|runtime| runtime.is_running())
+    }
+
+    pub fn register(&self, binding: &ShortcutBinding) -> Result<(), String> {
+        let runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?;
+        runtime
+            .get()
+            .ok_or_else(|| "HandyKeys runtime is not active".to_string())?
+            .register(binding)
+    }
+
+    pub fn unregister(&self, binding: &ShortcutBinding) -> Result<(), String> {
+        let runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?;
+        runtime
+            .get()
+            .ok_or_else(|| "HandyKeys runtime is not active".to_string())?
+            .unregister(binding)
+    }
+
+    pub fn start_recording(&self, app: &AppHandle, binding_id: String) -> Result<(), String> {
+        let runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?;
+        runtime
+            .get()
+            .ok_or_else(|| "HandyKeys runtime is not active".to_string())?
+            .start_recording(app, binding_id)
+    }
+
+    pub fn stop_recording(&self) -> Result<(), String> {
+        let runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?;
+        runtime
+            .get()
+            .ok_or_else(|| "HandyKeys runtime is not active".to_string())?
+            .stop_recording()
+    }
+
+    fn next_recording_event(&self) -> Option<handy_keys::KeyEvent> {
+        let runtime = self.runtime.lock().ok()?;
+        let listener = runtime.get()?.recording_listener.lock().ok()?;
+        listener.as_ref()?.try_recv()
+    }
+
+    #[cfg(target_os = "macos")]
+    fn start_accessibility_monitor(&self, app: &AppHandle) -> Result<(), String> {
+        let mut slot = self
+            .runtime
+            .lock()
+            .map_err(|_| "Failed to lock handy-keys runtime")?;
+        let runtime = slot
+            .get_mut()
+            .ok_or_else(|| "HandyKeys runtime is not active".to_string())?;
+
+        runtime
+            .accessibility_monitor_running
+            .store(true, Ordering::SeqCst);
+        let running = Arc::clone(&runtime.accessibility_monitor_running);
+        let app = app.clone();
+        // Detached deliberately: Drop signals `running` but never joins this
+        // monitor, because it may be waiting for the serialized transition
+        // currently dropping the runtime.
+        thread::spawn(move || {
+            while running.load(Ordering::SeqCst) {
+                if runtime_health_action(true, ::handy_keys::check_accessibility())
+                    == RuntimeHealthAction::StopAndFallback
+                {
+                    error!(
+                        "macOS Accessibility was revoked while HandyKeys was active; \
+                         stopping the event tap"
+                    );
+                    super::handle_accessibility_revoked(&app);
+                    break;
+                }
+                // Published handy-keys 0.3.1 checks its disabled tap roughly
+                // every 100 ms. Poll faster as defense in depth until the
+                // library itself can atomically refuse re-enable on revoke.
+                thread::sleep(std::time::Duration::from_millis(25));
+            }
+        });
+        Ok(())
+    }
+
+    /// Recording loop - emits key events to frontend during recording.
+    fn recording_loop(app: AppHandle, running: Arc<AtomicBool>) {
+        while running.load(Ordering::SeqCst) {
+            let event = app
+                .try_state::<HandyKeysState>()
+                .and_then(|state| state.next_recording_event());
+
+            if let Some(key_event) = event {
+                let frontend_event = FrontendKeyEvent {
+                    modifiers: modifiers_to_strings(key_event.modifiers),
+                    key: key_event.key.map(|key| key.to_string().to_lowercase()),
+                    is_key_down: key_event.is_key_down,
+                    hotkey_string: key_event
+                        .as_hotkey()
+                        .map(|hotkey| hotkey.to_handy_string())
+                        .unwrap_or_default(),
+                };
+
+                if let Err(error) = app.emit("handy-keys-event", &frontend_event) {
+                    error!("Failed to emit key event: {}", error);
+                }
+            } else {
+                thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+
+        debug!("Recording loop ended");
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeHealthAction {
+    Continue,
+    StopAndFallback,
+}
+
+fn runtime_health_action(
+    runtime_running: bool,
+    accessibility_granted: bool,
+) -> RuntimeHealthAction {
+    if runtime_running && !accessibility_granted {
+        RuntimeHealthAction::StopAndFallback
+    } else {
+        RuntimeHealthAction::Continue
     }
 }
 
@@ -423,83 +686,29 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
 
 /// Initialize handy-keys shortcuts
 pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
-    let state = HandyKeysState::new(app.clone())?;
+    super::require_macos_accessibility("advanced keyboard shortcuts")?;
 
-    let default_bindings = settings::get_default_settings().bindings;
-    let user_settings = settings::load_or_create_app_settings(app);
-
-    // Register all bindings except cancel (which is dynamic)
-    for (id, default_binding) in default_bindings {
-        if id == "cancel" {
-            continue;
-        }
-        // Skip post-processing shortcut when the feature is disabled
-        if id == "transcribe_with_post_process" && !user_settings.post_process_enabled {
-            continue;
-        }
-
-        let binding = user_settings
-            .bindings
-            .get(&id)
-            .cloned()
-            .unwrap_or(default_binding);
-
-        if let Err(e) = state.register(&binding) {
-            error!(
-                "Failed to register handy-keys shortcut {} during init: {}",
-                id, e
-            );
-        }
+    if app.try_state::<HandyKeysState>().is_none() {
+        app.manage(HandyKeysState::default());
     }
 
-    app.manage(state);
+    let state = app
+        .try_state::<HandyKeysState>()
+        .ok_or("Failed to manage HandyKeysState")?;
+    state.start(app)?;
     info!("handy-keys shortcuts initialized");
     Ok(())
 }
 
-/// Register the cancel shortcut (called when recording starts)
-pub fn register_cancel_shortcut(app: &AppHandle) {
-    // Disabled on Linux due to instability
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-        return;
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Some(state) = app_clone.try_state::<HandyKeysState>() {
-                    if let Err(e) = state.register(&cancel_binding) {
-                        error!("Failed to register cancel shortcut: {}", e);
-                    }
-                }
-            }
-        });
-    }
+/// Stop and drop the active listener, including its native macOS event tap.
+pub fn shutdown(app: &AppHandle) -> Result<bool, String> {
+    app.try_state::<HandyKeysState>()
+        .map_or(Ok(false), |state| state.stop())
 }
 
-/// Unregister the cancel shortcut (called when recording stops)
-pub fn unregister_cancel_shortcut(app: &AppHandle) {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-        return;
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Some(state) = app_clone.try_state::<HandyKeysState>() {
-                    let _ = state.unregister(&cancel_binding);
-                }
-            }
-        });
-    }
+pub fn is_running(app: &AppHandle) -> bool {
+    app.try_state::<HandyKeysState>()
+        .is_some_and(|state| state.is_running())
 }
 
 /// Register a shortcut
@@ -522,6 +731,8 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
 #[tauri::command]
 #[specta::specta]
 pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
+    super::require_macos_accessibility("advanced keyboard shortcut recording")?;
+
     let settings = get_settings(&app);
     if settings.keyboard_implementation != settings::KeyboardImplementation::HandyKeys {
         return Err("handy-keys is not the active keyboard implementation".into());
@@ -546,4 +757,112 @@ pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
         .try_state::<HandyKeysState>()
         .ok_or("HandyKeysState not initialized")?;
     state.stop_recording()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Debug)]
+    struct DropProbe(Arc<AtomicUsize>);
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn runtime_slot_drops_active_runtime_when_stopped() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut slot = RuntimeSlot::default();
+        slot.install(DropProbe(Arc::clone(&drops)))
+            .expect("first runtime should install");
+
+        assert!(slot.is_running());
+        let runtime = slot.take();
+        assert!(runtime.is_some());
+        drop(runtime);
+        assert!(!slot.is_running());
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn runtime_slot_is_restartable_after_stop() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut slot = RuntimeSlot::default();
+
+        slot.install(DropProbe(Arc::clone(&drops))).unwrap();
+        drop(slot.take());
+        slot.install(DropProbe(Arc::clone(&drops))).unwrap();
+
+        assert!(slot.is_running());
+        drop(slot);
+        assert_eq!(drops.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn runtime_slot_rejects_a_second_active_runtime() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut slot = RuntimeSlot::default();
+
+        slot.install(DropProbe(Arc::clone(&drops))).unwrap();
+        let duplicate = slot.install(DropProbe(Arc::clone(&drops)));
+
+        assert!(duplicate.is_err());
+        assert!(slot.is_running());
+        drop(duplicate);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+
+    struct LockAwareDrop {
+        slot: std::sync::Weak<Mutex<RuntimeSlot<LockAwareDrop>>>,
+        reacquired: Arc<AtomicBool>,
+    }
+
+    impl Drop for LockAwareDrop {
+        fn drop(&mut self) {
+            let reacquired = self
+                .slot
+                .upgrade()
+                .is_some_and(|slot| slot.try_lock().is_ok());
+            self.reacquired.store(reacquired, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn runtime_is_dropped_after_controller_lock_is_released() {
+        let reacquired = Arc::new(AtomicBool::new(false));
+        let slot = Arc::new(Mutex::new(RuntimeSlot::default()));
+        slot.lock()
+            .unwrap()
+            .install(LockAwareDrop {
+                slot: Arc::downgrade(&slot),
+                reacquired: Arc::clone(&reacquired),
+            })
+            .ok()
+            .expect("runtime should install");
+
+        let runtime = take_runtime(slot.as_ref()).unwrap();
+        drop(runtime);
+
+        assert!(reacquired.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn accessibility_revocation_stops_only_an_active_runtime() {
+        assert_eq!(
+            runtime_health_action(true, false),
+            RuntimeHealthAction::StopAndFallback
+        );
+        assert_eq!(
+            runtime_health_action(true, true),
+            RuntimeHealthAction::Continue
+        );
+        assert_eq!(
+            runtime_health_action(false, false),
+            RuntimeHealthAction::Continue
+        );
+    }
 }

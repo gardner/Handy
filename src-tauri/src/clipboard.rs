@@ -3,10 +3,10 @@ use crate::input::{self, EnigoState};
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
 use enigo::{Direction, Enigo, Key, Keyboard};
-use log::info;
+use log::{info, warn};
 use std::process::Command;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[cfg(target_os = "linux")]
@@ -612,6 +612,21 @@ fn paste_requires_enigo(paste_method: PasteMethod, auto_submit: bool) -> bool {
     paste_method.requires_synthetic_input(auto_submit)
 }
 
+fn should_notify_manual_copy(
+    paste_method: PasteMethod,
+    clipboard_handling: ClipboardHandling,
+) -> bool {
+    paste_method == PasteMethod::None && clipboard_handling == ClipboardHandling::CopyToClipboard
+}
+
+fn synthetic_input_permission_was_revoked(
+    paste_method: PasteMethod,
+    auto_submit: bool,
+    accessibility_granted: bool,
+) -> bool {
+    paste_method.requires_synthetic_input(auto_submit) && !accessibility_granted
+}
+
 pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let settings = get_settings(&app_handle);
     let paste_method = settings.paste_method;
@@ -624,6 +639,27 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     } else {
         text
     };
+
+    #[cfg(target_os = "macos")]
+    if synthetic_input_permission_was_revoked(
+        paste_method,
+        settings.auto_submit,
+        crate::shortcut::macos_accessibility_granted(),
+    ) {
+        if let Err(error) =
+            crate::shortcut::fallback_to_minimum_permissions(&app_handle, "permission_revoked")
+        {
+            warn!(
+                "Could not complete permission-free shortcut fallback; preserving transcription: {}",
+                error
+            );
+        }
+        app_handle.clipboard().write_text(&text).map_err(|error| {
+            format!("Failed to copy transcription after permission loss: {error}")
+        })?;
+        let _ = app_handle.emit("transcription-copied", ());
+        return Ok(());
+    }
 
     info!(
         "Using paste method: {:?}, delay before: {}ms, delay after: {}ms",
@@ -698,6 +734,9 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         clipboard
             .write_text(&text)
             .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+        if should_notify_manual_copy(paste_method, settings.clipboard_handling) {
+            let _ = app_handle.emit("transcription-copied", ());
+        }
     }
 
     Ok(())
@@ -747,5 +786,45 @@ mod tests {
         ] {
             assert!(paste_requires_enigo(method, false));
         }
+    }
+
+    #[test]
+    fn manual_clipboard_output_notifies_after_copy() {
+        assert!(should_notify_manual_copy(
+            PasteMethod::None,
+            ClipboardHandling::CopyToClipboard
+        ));
+        assert!(!should_notify_manual_copy(
+            PasteMethod::None,
+            ClipboardHandling::DontModify
+        ));
+        assert!(!should_notify_manual_copy(
+            PasteMethod::CtrlV,
+            ClipboardHandling::CopyToClipboard
+        ));
+    }
+
+    #[test]
+    fn revoked_permission_falls_back_only_for_synthetic_input() {
+        assert!(synthetic_input_permission_was_revoked(
+            PasteMethod::CtrlV,
+            false,
+            false
+        ));
+        assert!(synthetic_input_permission_was_revoked(
+            PasteMethod::ExternalScript,
+            true,
+            false
+        ));
+        assert!(!synthetic_input_permission_was_revoked(
+            PasteMethod::None,
+            true,
+            false
+        ));
+        assert!(!synthetic_input_permission_was_revoked(
+            PasteMethod::CtrlV,
+            false,
+            true
+        ));
     }
 }
