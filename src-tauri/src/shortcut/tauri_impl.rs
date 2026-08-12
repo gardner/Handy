@@ -3,7 +3,7 @@
 //! This module provides shortcut functionality using Tauri's built-in
 //! global-shortcut plugin.
 
-use log::{error, warn};
+use log::{debug, error, warn};
 use std::{
     collections::HashMap,
     sync::{LazyLock, Mutex, MutexGuard},
@@ -32,6 +32,10 @@ impl ShortcutRegistrationTracker {
 
     fn snapshot(&self) -> Vec<ShortcutBinding> {
         self.bindings.values().cloned().collect()
+    }
+
+    fn contains(&self, binding: &ShortcutBinding) -> bool {
+        self.bindings.contains_key(&binding.current_binding)
     }
 }
 
@@ -137,6 +141,13 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
         }
     };
 
+    // Resume paths are deliberately idempotent. The tracker distinguishes a
+    // shortcut already owned by this backend from a collision with another
+    // component/process.
+    if registered_shortcuts().contains(&binding) {
+        return Ok(());
+    }
+
     // Prevent duplicate registrations that would silently shadow one another
     if app.global_shortcut().is_registered(shortcut) {
         let error_msg = format!("Shortcut '{}' is already in use", binding.current_binding);
@@ -152,6 +163,12 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
             if scut == &shortcut {
                 let shortcut_string = scut.into_string();
                 let is_pressed = event.state == ShortcutState::Pressed;
+                // Mirrors the handy-keys event log line; the distinct prefix
+                // makes it possible to identify the backend that fired.
+                debug!(
+                    "tauri global-shortcut event: binding={}, shortcut={}, state={:?}",
+                    binding_id_for_closure, shortcut_string, event.state
+                );
                 handle_shortcut_event(
                     app_handle,
                     &binding_id_for_closure,

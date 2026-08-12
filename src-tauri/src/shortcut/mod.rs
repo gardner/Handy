@@ -11,13 +11,12 @@
 
 mod handler;
 pub mod handy_keys;
-mod tauri_impl;
+pub mod tauri_impl;
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_autostart::ManagerExt;
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::settings::APPLE_INTELLIGENCE_DEFAULT_MODEL_ID;
@@ -31,9 +30,60 @@ use crate::tray;
 // Note: Commands are accessed via shortcut::handy_keys:: in lib.rs
 
 static SHORTCUT_TRANSITION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+#[derive(Default)]
+struct ShortcutCaptureState {
+    owner: Option<String>,
+}
+
+static SHORTCUT_CAPTURE_STATE: std::sync::LazyLock<std::sync::Mutex<ShortcutCaptureState>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(ShortcutCaptureState::default()));
 #[cfg(target_os = "macos")]
 static GENERAL_ACCESSIBILITY_MONITOR_STARTED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "macos")]
+static GENERAL_ACCESSIBILITY_MONITOR_CONTROL: std::sync::LazyLock<(
+    std::sync::Mutex<bool>,
+    std::sync::Condvar,
+)> = std::sync::LazyLock::new(|| (std::sync::Mutex::new(false), std::sync::Condvar::new()));
+const HANDY_KEYS_RESTART_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30);
+static HANDY_KEYS_RESTART_GUARD: std::sync::LazyLock<std::sync::Mutex<HandyKeysRestartGuard>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HandyKeysRestartGuard::default()));
+
+#[derive(Default)]
+struct HandyKeysRestartGuard {
+    last_restart: Option<std::time::Instant>,
+}
+
+impl HandyKeysRestartGuard {
+    fn reserve_restart(&mut self, now: std::time::Instant) -> bool {
+        if self.last_restart.is_some_and(|previous| {
+            now.saturating_duration_since(previous) < HANDY_KEYS_RESTART_COOLDOWN
+        }) {
+            return false;
+        }
+
+        self.last_restart = Some(now);
+        true
+    }
+
+    fn reset(&mut self) {
+        self.last_restart = None;
+    }
+}
+
+fn reserve_handy_keys_restart() -> bool {
+    HANDY_KEYS_RESTART_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .reserve_restart(std::time::Instant::now())
+}
+
+fn reset_handy_keys_restart_guard() {
+    HANDY_KEYS_RESTART_GUARD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .reset();
+}
 
 #[cfg(any(not(target_os = "linux"), test))]
 #[derive(Clone, Copy)]
@@ -92,6 +142,23 @@ fn with_shortcut_transition<T>(operation: impl FnOnce() -> Result<T, String>) ->
     operation()
 }
 
+fn shortcut_capture_owner() -> std::sync::MutexGuard<'static, ShortcutCaptureState> {
+    SHORTCUT_CAPTURE_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn abandon_shortcut_capture() {
+    shortcut_capture_owner().owner = None;
+}
+
+fn prepare_for_backend_teardown(app: &AppHandle, reason: &str) -> Result<(), String> {
+    cancel_active_recording_before_backend_teardown(app);
+    handy_keys::cancel_recording_for_backend_teardown(app, reason)?;
+    abandon_shortcut_capture();
+    Ok(())
+}
+
 fn accessibility_fallback_needed(
     accessibility_was_granted: bool,
     configuration_requires_accessibility: bool,
@@ -100,9 +167,34 @@ fn accessibility_fallback_needed(
     !accessibility_granted && (accessibility_was_granted || configuration_requires_accessibility)
 }
 
+fn accessibility_monitor_check_needed(configuration_requires_accessibility: bool) -> bool {
+    configuration_requires_accessibility
+}
+
+/// Wake or park the macOS Accessibility monitor when the persisted feature
+/// profile changes. Minimum-permissions mode performs no recurring AX calls.
+#[cfg(target_os = "macos")]
+pub(crate) fn set_general_accessibility_monitor_required(required: bool) {
+    let (state, changed) = &*GENERAL_ACCESSIBILITY_MONITOR_CONTROL;
+    let mut current = state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if *current != required {
+        *current = required;
+        changed.notify_all();
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn set_general_accessibility_monitor_required(_required: bool) {}
+
 #[cfg(target_os = "macos")]
 fn ensure_general_accessibility_monitor(app: &AppHandle) {
     use std::sync::atomic::Ordering;
+
+    set_general_accessibility_monitor_required(
+        settings::get_settings(app).requires_macos_accessibility(),
+    );
 
     if GENERAL_ACCESSIBILITY_MONITOR_STARTED
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -119,9 +211,21 @@ fn ensure_general_accessibility_monitor(app: &AppHandle) {
         let mut accessibility_was_granted = true;
 
         loop {
+            let (monitor_required, changed) = &*GENERAL_ACCESSIBILITY_MONITOR_CONTROL;
+            let mut required = monitor_required
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            while !accessibility_monitor_check_needed(*required) {
+                required = changed
+                    .wait(required)
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+            }
+            drop(required);
+
             let accessibility_granted = macos_accessibility_granted();
-            let configuration_requires_accessibility = !accessibility_granted
-                && settings::get_settings(&app).requires_macos_accessibility();
+            let configuration_requires_accessibility = *monitor_required
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
 
             if accessibility_fallback_needed(
                 accessibility_was_granted,
@@ -139,7 +243,15 @@ fn ensure_general_accessibility_monitor(app: &AppHandle) {
             } else if accessibility_granted {
                 accessibility_was_granted = true;
             }
-            std::thread::sleep(std::time::Duration::from_millis(25));
+            // The native listener reports terminal event-tap failures. This
+            // slower app-level check remains only as defense for silent AX
+            // transitions outside the listener lifecycle.
+            let required = monitor_required
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if *required {
+                let _ = changed.wait_timeout(required, std::time::Duration::from_millis(250));
+            }
         }
     });
 }
@@ -297,6 +409,9 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
 
         init_shortcuts_unlocked(app)?;
         app.manage(crate::commands::ShortcutsInitialized);
+        // Secure Input shadows are deferred until the initialized marker is
+        // present, so reconcile only after the complete backend is live.
+        crate::secure_input::reconcile_fallback(app);
         Ok(())
     })
 }
@@ -323,6 +438,7 @@ fn init_shortcuts_unlocked(app: &AppHandle) -> Result<(), String> {
             settings::update_settings(app, settings::AppSettings::use_minimum_permissions_profile);
         user_settings = settings::get_settings(app);
         emit_minimum_permissions_change(app, &reset_bindings, "permission_unavailable");
+        crate::secure_input::reconcile_fallback(app);
     }
 
     // Check which implementation to use
@@ -346,6 +462,7 @@ fn init_shortcuts_unlocked(app: &AppHandle) -> Result<(), String> {
                     "shortcut_initialization_failed",
                 );
 
+                crate::secure_input::reconcile_fallback(app);
                 tauri_impl::init_shortcuts(app)?;
                 return Ok(());
             }
@@ -496,6 +613,10 @@ fn shutdown_handy_keys(app: &AppHandle) -> Result<bool, String> {
 
 /// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
+    // Track the recording lifecycle independently of the active backend so a
+    // sustained Secure Input episode can shadow the dynamic cancel binding.
+    crate::secure_input::register_cancel_fallback(app);
+
     #[cfg(target_os = "linux")]
     let _ = app;
 
@@ -530,6 +651,8 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
 
 /// Unregister the cancel shortcut (called when recording stops)
 pub fn unregister_cancel_shortcut(app: &AppHandle) {
+    crate::secure_input::unregister_cancel_fallback(app);
+
     #[cfg(target_os = "linux")]
     let _ = app;
 
@@ -544,6 +667,13 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
                 }
 
                 debug_assert!(!request.desired);
+                #[cfg(target_os = "macos")]
+                {
+                    let current = get_settings(&app);
+                    if current.requires_macos_accessibility() && !macos_accessibility_granted() {
+                        fallback_to_minimum_permissions_unlocked(&app, "permission_revoked")?;
+                    }
+                }
                 unregister_registered_cancel_shortcut(&app)
             });
 
@@ -646,12 +776,20 @@ fn change_binding_unlocked(
     updated_binding.current_binding = binding;
     require_accessible_shortcut(settings.keyboard_implementation, &updated_binding)?;
 
-    // The cancel shortcut is managed dynamically, so only its persisted value
-    // changes here.
-    if id == "cancel" {
+    #[cfg(target_os = "macos")]
+    if settings.requires_macos_accessibility() && !macos_accessibility_granted() {
+        fallback_to_minimum_permissions_unlocked(&app, "permission_revoked")?;
+        return change_binding_unlocked(app, id, updated_binding.current_binding);
+    }
+
+    // Inactive bindings are configuration only. Registering a disabled
+    // post-processing shortcut would make it live behind the UI and, for a
+    // media key, create an event tap that the permission policy cannot see.
+    if !binding_change_updates_runtime(&settings, &id, shortcut_capture_owner().owner.is_some()) {
         settings::update_settings(&app, |settings| {
             settings.bindings.insert(id, updated_binding.clone());
         });
+        crate::secure_input::reconcile_fallback(&app);
         return Ok(BindingResponse {
             success: true,
             binding: Some(updated_binding),
@@ -692,6 +830,7 @@ fn change_binding_unlocked(
     settings::update_settings(&app, |settings| {
         settings.bindings.insert(id, updated_binding.clone());
     });
+    crate::secure_input::reconcile_fallback(&app);
 
     // Return the updated binding
     Ok(BindingResponse {
@@ -708,32 +847,183 @@ pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, Stri
     change_binding(app, id, binding.default_binding)
 }
 
-/// Temporarily unregister a binding while the user is editing it in the UI.
-/// This avoids firing the action while keys are being recorded.
+fn binding_is_runtime_active(app_settings: &settings::AppSettings, id: &str) -> bool {
+    id != "cancel" && (id != "transcribe_with_post_process" || app_settings.post_process_enabled)
+}
+
+fn binding_change_updates_runtime(
+    app_settings: &settings::AppSettings,
+    id: &str,
+    shortcut_capture_suspended: bool,
+) -> bool {
+    !shortcut_capture_suspended && binding_is_runtime_active(app_settings, id)
+}
+
+/// Return the static shortcuts that should currently be registered. The
+/// dynamic cancel binding belongs to the recording lifecycle.
+fn active_static_bindings(app_settings: &settings::AppSettings) -> Vec<(&str, ShortcutBinding)> {
+    let mut bindings: Vec<_> = app_settings
+        .bindings
+        .iter()
+        .filter(|(id, _)| binding_is_runtime_active(app_settings, id))
+        .map(|(id, binding)| (id.as_str(), binding.clone()))
+        .collect();
+    bindings.sort_by_key(|(id, _)| *id);
+    bindings
+}
+
+/// Temporarily unregister every active static shortcut while the user records
+/// a replacement. This avoids another binding firing or swallowing the input.
+fn suspend_bindings_transactionally<T: Clone>(
+    bindings: Vec<(&str, T)>,
+    mut suspend: impl FnMut(&T) -> Result<(), String>,
+    mut restore: impl FnMut(&T) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut suspended = Vec::new();
+
+    for (id, binding) in bindings {
+        if let Err(error) = suspend(&binding) {
+            let mut rollback_errors = Vec::new();
+            for (restored_id, restored_binding) in suspended.iter().rev() {
+                if let Err(rollback_error) = restore(restored_binding) {
+                    rollback_errors.push(format!("'{restored_id}': {rollback_error}"));
+                }
+            }
+
+            let mut message = format!("Could not suspend shortcut '{id}': {error}");
+            if !rollback_errors.is_empty() {
+                message.push_str(&format!(
+                    "; failed to restore previously suspended shortcuts: {}",
+                    rollback_errors.join("; ")
+                ));
+            }
+            return Err(message);
+        }
+        suspended.push((id, binding));
+    }
+
+    Ok(())
+}
+
+fn suspend_all_shortcuts(app: &AppHandle) -> Result<(), String> {
+    let app_settings = get_settings(app);
+    suspend_bindings_transactionally(
+        active_static_bindings(&app_settings),
+        |binding| unregister_shortcut(app, binding.clone()),
+        |binding| register_shortcut(app, binding.clone()),
+    )
+}
+
+/// Re-register every active static shortcut after shortcut recording ends.
+fn resume_all_shortcuts(app: &AppHandle) -> Result<(), String> {
+    let mut app_settings = get_settings(app);
+
+    #[cfg(target_os = "macos")]
+    if validate_macos_accessibility_configuration(&app_settings, macos_accessibility_granted())
+        .is_err()
+    {
+        fallback_to_minimum_permissions_unlocked(app, "permission_revoked")?;
+        // Accessibility may have been restored while the fallback waited for
+        // this serialized transition. Reload either the restored profile or
+        // the newly applied minimum-permissions profile and converge by
+        // registering its active bindings below.
+        app_settings = get_settings(app);
+    }
+
+    resume_bindings_transactionally(
+        active_static_bindings(&app_settings),
+        |binding| register_shortcut(app, binding.clone()),
+        |binding| unregister_shortcut(app, binding.clone()),
+    )
+}
+
+fn recover_failed_shortcut_resume(
+    resume_result: Result<(), String>,
+    recover: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let Err(resume_error) = resume_result else {
+        return Ok(());
+    };
+
+    recover().map_err(|recovery_error| {
+        format!(
+            "Could not restore suspended shortcuts ({resume_error}); permission-free recovery failed ({recovery_error})"
+        )
+    })
+}
+
+fn resume_bindings_transactionally<T: Clone>(
+    bindings: Vec<(&str, T)>,
+    mut resume: impl FnMut(&T) -> Result<(), String>,
+    mut rollback: impl FnMut(&T) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut resumed = Vec::new();
+
+    for (id, binding) in bindings {
+        if let Err(error) = resume(&binding) {
+            let mut rollback_errors = Vec::new();
+            for (resumed_id, resumed_binding) in resumed.iter().rev() {
+                if let Err(rollback_error) = rollback(resumed_binding) {
+                    rollback_errors.push(format!("'{resumed_id}': {rollback_error}"));
+                }
+            }
+
+            let mut message = format!("Could not restore shortcut '{id}': {error}");
+            if !rollback_errors.is_empty() {
+                message.push_str(&format!(
+                    "; failed to roll back partially restored shortcuts: {}",
+                    rollback_errors.join("; ")
+                ));
+            }
+            return Err(message);
+        }
+        resumed.push((id, binding));
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 #[specta::specta]
-pub fn suspend_binding(app: AppHandle, id: String) -> Result<(), String> {
+pub fn suspend_all_bindings(app: AppHandle, owner: String) -> Result<(), String> {
     with_shortcut_transition(|| {
-        if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
-            if let Err(e) = unregister_shortcut(&app, b) {
-                error!("suspend_binding error for id '{}': {}", id, e);
-                return Err(e);
+        if shortcut_capture_owner().owner.is_some() {
+            return Err("Another shortcut is already being recorded".into());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let current = get_settings(&app);
+            if current.requires_macos_accessibility() && !macos_accessibility_granted() {
+                fallback_to_minimum_permissions_unlocked(&app, "permission_revoked")?;
             }
         }
+
+        suspend_all_shortcuts(&app)?;
+        shortcut_capture_owner().owner = Some(owner);
         Ok(())
     })
 }
 
-/// Re-register the binding after the user has finished editing.
 #[tauri::command]
 #[specta::specta]
-pub fn resume_binding(app: AppHandle, id: String) -> Result<(), String> {
+pub fn resume_all_bindings(app: AppHandle, owner: String) -> Result<(), String> {
     with_shortcut_transition(|| {
-        if let Some(b) = settings::get_bindings(&app).get(&id).cloned() {
-            if let Err(e) = register_shortcut(&app, b) {
-                error!("resume_binding error for id '{}': {}", id, e);
-                return Err(e);
-            }
+        let current_owner = shortcut_capture_owner().owner.clone();
+        let Some(current_owner) = current_owner else {
+            return Ok(());
+        };
+        if current_owner != owner {
+            return Err("Shortcut recording is owned by another editor".into());
+        }
+
+        recover_failed_shortcut_resume(resume_all_shortcuts(&app), || {
+            warn!("Could not restore shortcut capture cleanly; rebuilding permission-free input");
+            force_minimum_permissions_unlocked(&app, "shortcut_restore_failed")
+        })?;
+        let mut capture = shortcut_capture_owner();
+        if capture.owner.as_deref() == Some(owner.as_str()) {
+            capture.owner = None;
         }
         Ok(())
     })
@@ -802,6 +1092,8 @@ fn configure_minimum_permissions_unlocked(
         .is_some();
     let previous_implementation = settings::get_settings(&app).keyboard_implementation;
 
+    prepare_for_backend_teardown(&app, "minimum_permissions_selected")?;
+
     match previous_implementation {
         KeyboardImplementation::Tauri => {
             unregister_all_tauri_shortcuts(&app)?;
@@ -816,6 +1108,9 @@ fn configure_minimum_permissions_unlocked(
     let mut reset_bindings =
         settings::update_settings(&app, settings::AppSettings::use_minimum_permissions_profile);
     emit_minimum_permissions_change(&app, &reset_bindings, "user_selected");
+    // Changing to Tauri makes existing Carbon shadows ineligible. Remove them
+    // before registering the full Tauri backend to avoid duplicate shortcuts.
+    crate::secure_input::reconcile_fallback(&app);
 
     if shortcuts_initialized {
         match register_all_shortcuts_for_implementation(&app, KeyboardImplementation::Tauri) {
@@ -862,6 +1157,7 @@ fn recover_permission_free_shortcuts(
         prepare_default_minimum_permissions_profile(settings)
     });
     emit_minimum_permissions_change(app, &reset_bindings, "shortcut_registration_failed");
+    crate::secure_input::reconcile_fallback(app);
 
     tauri_impl::init_shortcuts(app).map_err(|recovery_error| {
         format!(
@@ -873,11 +1169,76 @@ fn recover_permission_free_shortcuts(
     Ok(reset_bindings)
 }
 
-/// Tear down restricted input after runtime Accessibility revocation and retain
-/// core recording through ordinary Tauri shortcuts plus manual paste.
-pub(super) fn handle_accessibility_revoked(app: &AppHandle) {
-    if let Err(error) = fallback_to_minimum_permissions(app, "permission_revoked") {
-        error!("Accessibility revocation transition failed: {error}");
+/// Recover from a terminal native handy-keys listener without ever attempting
+/// to revive a tap after Accessibility has been revoked.
+pub(super) fn handle_handy_keys_termination(
+    app: &AppHandle,
+    reason: ::handy_keys::ListenerTerminationReason,
+) {
+    if reason == ::handy_keys::ListenerTerminationReason::ShutdownRequested {
+        return;
+    }
+
+    let result = with_shortcut_transition(|| {
+        if settings::get_settings(app).keyboard_implementation != KeyboardImplementation::HandyKeys
+        {
+            debug!(
+                "Ignoring terminal handy-keys listener after backend change: {:?}",
+                reason
+            );
+            return Ok(());
+        }
+
+        if !macos_accessibility_granted() {
+            warn!(
+                "HandyKeys listener stopped ({:?}) after Accessibility was revoked; \
+                 activating permission-free input",
+                reason
+            );
+            return fallback_to_minimum_permissions_unlocked_after_terminal_listener(
+                app,
+                "permission_revoked",
+            );
+        }
+
+        if !reserve_handy_keys_restart() {
+            warn!(
+                "HandyKeys listener stopped again within {:?}; activating permission-free input",
+                HANDY_KEYS_RESTART_COOLDOWN
+            );
+            return fallback_to_minimum_permissions_unlocked_after_terminal_listener(
+                app,
+                "shortcut_listener_unstable",
+            );
+        }
+
+        info!(
+            "HandyKeys listener stopped ({:?}) while Accessibility remains granted; restarting",
+            reason
+        );
+        prepare_for_backend_teardown(app, "shortcut_listener_restarted")?;
+        let restart_result = shutdown_handy_keys(app).and_then(|_| handy_keys::init_shortcuts(app));
+        if restart_result.is_ok() && handy_keys::is_running(app) {
+            crate::secure_input::reconcile_fallback(app);
+            return Ok(());
+        }
+
+        let restart_error = restart_result
+            .err()
+            .unwrap_or_else(|| "the restarted listener was not active".to_string());
+        error!("Failed to restart the terminal HandyKeys listener: {restart_error}");
+        fallback_to_minimum_permissions_unlocked(app, "shortcut_listener_failed").map_err(
+            |fallback_error| {
+                format!(
+                    "Failed to restart HandyKeys ({restart_error}); permission-free fallback also \
+                     failed ({fallback_error})"
+                )
+            },
+        )
+    });
+
+    if let Err(error) = result {
+        error!("HandyKeys terminal-listener recovery failed: {error}");
     }
 }
 
@@ -886,21 +1247,67 @@ pub(crate) fn fallback_to_minimum_permissions(app: &AppHandle, reason: &str) -> 
 }
 
 fn fallback_to_minimum_permissions_unlocked(app: &AppHandle, reason: &str) -> Result<(), String> {
+    fallback_to_minimum_permissions_unlocked_with_restore_check(app, reason, true)
+}
+
+/// A terminal listener is already dead, so a quickly restored grant must not
+/// cancel recovery and leave the selected backend with no working listener.
+fn fallback_to_minimum_permissions_unlocked_after_terminal_listener(
+    app: &AppHandle,
+    reason: &str,
+) -> Result<(), String> {
+    fallback_to_minimum_permissions_unlocked_with_restore_check(app, reason, false)
+}
+
+fn fallback_to_minimum_permissions_unlocked_with_restore_check(
+    app: &AppHandle,
+    reason: &str,
+    cancel_if_permission_was_restored: bool,
+) -> Result<(), String> {
+    fallback_to_minimum_permissions_unlocked_with_settings_update(
+        app,
+        reason,
+        cancel_if_permission_was_restored,
+        false,
+        |_| {},
+    )
+}
+
+fn force_minimum_permissions_unlocked(app: &AppHandle, reason: &str) -> Result<(), String> {
+    fallback_to_minimum_permissions_unlocked_with_settings_update(app, reason, false, true, |_| {})
+}
+
+fn fallback_to_minimum_permissions_unlocked_with_settings_update(
+    app: &AppHandle,
+    reason: &str,
+    cancel_if_permission_was_restored: bool,
+    force: bool,
+    update: impl FnOnce(&mut settings::AppSettings),
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    if reason == "permission_revoked" && macos_accessibility_granted() {
+    if cancel_if_permission_was_restored
+        && reason == "permission_revoked"
+        && macos_accessibility_granted()
+    {
         // The transition may have waited behind another shortcut operation
         // while the user restored the grant in System Settings.
         return Ok(());
     }
 
     let current = settings::get_settings(app);
-    if !current.requires_macos_accessibility() {
+    if !force && !current.requires_macos_accessibility() {
         return Ok(());
     }
 
     let initialized = app
         .try_state::<crate::commands::ShortcutsInitialized>()
         .is_some();
+
+    // Revocation can swallow the key-up that normally stops push-to-talk and
+    // also removes the dynamic Escape binding. Cancel before tearing down the
+    // old backend so recording and coordinator state cannot remain wedged.
+    prepare_for_backend_teardown(app, reason)?;
+
     match current.keyboard_implementation {
         KeyboardImplementation::HandyKeys => {
             shutdown_handy_keys(app)?;
@@ -910,10 +1317,15 @@ fn fallback_to_minimum_permissions_unlocked(app: &AppHandle, reason: &str) -> Re
         }
     }
 
-    let reset_bindings =
-        settings::update_settings(app, settings::AppSettings::use_minimum_permissions_profile);
+    let reset_bindings = settings::update_settings(app, |settings| {
+        update(settings);
+        settings.use_minimum_permissions_profile()
+    });
     emit_minimum_permissions_change(app, &reset_bindings, reason);
-    let _ = app.emit("macos-accessibility-revoked", ());
+    if reason == "permission_revoked" {
+        let _ = app.emit("macos-accessibility-revoked", ());
+    }
+    crate::secure_input::reconcile_fallback(app);
 
     if initialized {
         if let Err(error) = tauri_impl::init_shortcuts(app) {
@@ -957,8 +1369,17 @@ fn change_keyboard_implementation_setting_unlocked(
                 return Err(error);
             }
             if !handy_keys::is_running(&app) {
-                handy_keys::init_shortcuts(&app)?;
+                if let Err(error) = handy_keys::init_shortcuts(&app) {
+                    fallback_to_minimum_permissions_unlocked(
+                        &app,
+                        "shortcut_initialization_failed",
+                    )?;
+                    return Err(format!(
+                        "Failed to restart HandyKeys: {error}. Reverted to permission-free input."
+                    ));
+                }
             }
+            crate::secure_input::reconcile_fallback(&app);
         }
         return Ok(ImplementationChangeResult {
             success: true,
@@ -972,16 +1393,6 @@ fn change_keyboard_implementation_setting_unlocked(
     );
 
     let accessibility_granted = macos_accessibility_granted();
-    let stopped_revoked_handy_keys = current_impl == KeyboardImplementation::HandyKeys
-        && new_impl == KeyboardImplementation::Tauri
-        && !accessibility_granted;
-
-    // Teardown takes priority after revocation; do it before inspecting or
-    // rewriting stale settings that may still describe restricted features.
-    if stopped_revoked_handy_keys {
-        shutdown_handy_keys(&app)?;
-    }
-
     let mut updated_settings = current_settings.clone();
     let mut reset_bindings = prepare_keyboard_implementation_change(
         &mut updated_settings,
@@ -989,18 +1400,22 @@ fn change_keyboard_implementation_setting_unlocked(
         accessibility_granted,
     )?;
 
+    // Validate the requested target before disturbing a working backend or an
+    // active shortcut editor. Revoked HandyKeys -> Tauri remains valid and is
+    // torn down immediately after this pure validation step.
+    prepare_for_backend_teardown(&app, "keyboard_backend_changed")?;
+
     // Destroy HandyKeys itself rather than merely unregistering its bindings.
     // Dropping the runtime tears down the underlying native event tap.
-    if !stopped_revoked_handy_keys {
-        match current_impl {
-            KeyboardImplementation::Tauri => unregister_all_tauri_shortcuts(&app)?,
-            KeyboardImplementation::HandyKeys => {
-                shutdown_handy_keys(&app)?;
-            }
+    match current_impl {
+        KeyboardImplementation::Tauri => unregister_all_tauri_shortcuts(&app)?,
+        KeyboardImplementation::HandyKeys => {
+            shutdown_handy_keys(&app)?;
         }
     }
 
     if new_impl == KeyboardImplementation::HandyKeys {
+        reset_handy_keys_restart_guard();
         // Publish the gated backend before starting the revocation monitor.
         // If permission disappears immediately, the monitor's safe fallback is
         // then the final settings write rather than being overwritten here.
@@ -1018,6 +1433,7 @@ fn change_keyboard_implementation_setting_unlocked(
                 &reset_bindings,
                 "shortcut_initialization_failed",
             );
+            crate::secure_input::reconcile_fallback(&app);
             if let Err(fallback_error) = tauri_impl::init_shortcuts(&app) {
                 recover_permission_free_shortcuts(
                     &app,
@@ -1034,12 +1450,14 @@ fn change_keyboard_implementation_setting_unlocked(
             ));
         }
         if !handy_keys::is_running(&app) {
+            fallback_to_minimum_permissions_unlocked(&app, "shortcut_initialization_failed")?;
             return Err(
                 "Accessibility was revoked while HandyKeys initialized; using permission-free input"
                     .into(),
             );
         }
 
+        crate::secure_input::reconcile_fallback(&app);
         emit_keyboard_implementation_change(&app, &implementation, &[]);
         return Ok(ImplementationChangeResult {
             success: true,
@@ -1056,6 +1474,12 @@ fn change_keyboard_implementation_setting_unlocked(
         settings::update_settings(&app, |settings| {
             settings.keyboard_implementation = new_impl;
         });
+    }
+
+    if new_impl == KeyboardImplementation::Tauri {
+        // Existing Secure Input shadows also use Tauri's plugin. Remove them
+        // after publishing the backend change and before full registration.
+        crate::secure_input::reconcile_fallback(&app);
     }
 
     match register_all_shortcuts_for_implementation(&app, new_impl) {
@@ -1079,6 +1503,7 @@ fn change_keyboard_implementation_setting_unlocked(
                     settings.keyboard_implementation = KeyboardImplementation::HandyKeys;
                 });
                 if handy_keys::init_shortcuts(&app).is_ok() {
+                    crate::secure_input::reconcile_fallback(&app);
                     emit_keyboard_implementation_change(&app, "handy_keys", &[]);
                     return Err(format!(
                         "Failed to initialize Tauri shortcuts: {registration_error}. Restored \
@@ -1110,6 +1535,15 @@ fn change_keyboard_implementation_setting_unlocked(
         success: true,
         reset_bindings,
     })
+}
+
+fn cancel_active_recording_before_backend_teardown(app: &AppHandle) {
+    if app
+        .try_state::<std::sync::Arc<crate::managers::audio::AudioRecordingManager>>()
+        .is_some_and(|manager| manager.is_recording())
+    {
+        crate::utils::cancel_current_operation(app);
+    }
 }
 
 fn emit_keyboard_implementation_change(
@@ -1325,16 +1759,17 @@ pub fn change_theme_setting(app: AppHandle, theme: String) -> Result<(), String>
     settings::update_settings(&app, |settings| {
         settings.theme = parsed;
     });
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     apply_window_theme(&app, parsed);
+    // Other webviews (notably the recording overlay) own their document theme
+    // and need an explicit live update.
+    let _ = app.emit("theme-changed", parsed);
     Ok(())
 }
 
-/// Applies the appearance setting to the Windows title bar, which CSS
-/// `data-theme` cannot reach. `System` clears the override so the window follows
-/// Windows. Call this on startup and whenever the setting changes to keep the
-/// title bar in sync with the in-app palette.
-#[cfg(target_os = "windows")]
+/// Applies the appearance setting to native window chrome. On macOS this is
+/// app-wide (`NSApp.appearance`); on Windows it updates the title bar.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn apply_window_theme(app: &AppHandle, theme: Theme) {
     let window_theme = match theme {
         Theme::System => None,
@@ -1466,13 +1901,9 @@ pub fn change_autostart_setting(app: AppHandle, enabled: bool) -> Result<(), Str
         settings.autostart_enabled = enabled;
     });
 
-    // Apply the autostart setting immediately
-    let autostart_manager = app.autolaunch();
-    if enabled {
-        let _ = autostart_manager.enable();
-    } else {
-        let _ = autostart_manager.disable();
-    }
+    // Apply the autostart setting immediately using the platform-specific
+    // helper (SMAppService on supported macOS versions).
+    crate::autostart::apply_autostart(&app, enabled);
 
     // Notify frontend
     let _ = app.emit(
@@ -1591,6 +2022,15 @@ pub fn change_paste_delay_ms_setting(app: AppHandle, ms: u64) -> Result<(), Stri
 pub fn change_paste_delay_after_ms_setting(app: AppHandle, ms: u64) -> Result<(), String> {
     settings::update_settings(&app, |settings| {
         settings.paste_delay_after_ms = ms;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_reliable_paste_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    settings::update_settings(&app, |settings| {
+        settings.reliable_paste = enabled;
     });
     Ok(())
 }
@@ -1735,6 +2175,32 @@ pub fn change_post_process_enabled_setting(app: AppHandle, enabled: bool) -> Res
             .get("transcribe_with_post_process")
             .cloned();
 
+        #[cfg(target_os = "macos")]
+        if current.requires_macos_accessibility() && !macos_accessibility_granted() {
+            fallback_to_minimum_permissions_unlocked_with_settings_update(
+                &app,
+                "permission_revoked",
+                true,
+                false,
+                |settings| {
+                    if !enabled {
+                        settings.post_process_enabled = false;
+                    }
+                },
+            )?;
+            if !enabled {
+                // If fallback applied, it persisted the disabled state before
+                // re-registering the permission-free backend. If permission
+                // was restored while this transition waited, continue below
+                // and perform the ordinary per-binding unregister instead.
+                if !settings::get_settings(&app).post_process_enabled {
+                    return Ok(());
+                }
+            } else {
+                return Err(ACCESSIBILITY_REQUIRED_ERROR.into());
+            }
+        }
+
         if enabled {
             if let Some(binding) = binding.as_ref() {
                 require_accessible_shortcut(current.keyboard_implementation, binding)?;
@@ -1756,6 +2222,7 @@ pub fn change_post_process_enabled_setting(app: AppHandle, enabled: bool) -> Res
         settings::update_settings(&app, |settings| {
             settings.post_process_enabled = enabled;
         });
+        crate::secure_input::reconcile_fallback(&app);
         Ok(())
     })
 }
@@ -2019,6 +2486,18 @@ pub fn change_vad_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), S
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_filler_word_removal_enabled_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    settings::update_settings(&app, |settings| {
+        settings.filler_word_removal_enabled = enabled;
+    });
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(), String> {
     settings::update_settings(&app, |settings| {
         settings.app_language = language.clone();
@@ -2143,6 +2622,155 @@ mod tests {
         assert!(accessibility_fallback_needed(true, false, false));
         assert!(!accessibility_fallback_needed(false, false, false));
         assert!(!accessibility_fallback_needed(true, true, true));
+    }
+
+    #[test]
+    fn permission_free_profile_does_not_poll_accessibility() {
+        assert!(!accessibility_monitor_check_needed(false));
+        assert!(accessibility_monitor_check_needed(true));
+    }
+
+    #[test]
+    fn repeated_listener_failure_falls_back_instead_of_churning_event_taps() {
+        let started = std::time::Instant::now();
+        let mut guard = HandyKeysRestartGuard::default();
+
+        assert!(guard.reserve_restart(started));
+        assert!(!guard.reserve_restart(
+            started + HANDY_KEYS_RESTART_COOLDOWN - std::time::Duration::from_millis(1)
+        ));
+        assert!(guard.reserve_restart(started + HANDY_KEYS_RESTART_COOLDOWN));
+
+        guard.reset();
+        assert!(guard.reserve_restart(started));
+    }
+
+    #[test]
+    fn disabled_post_process_binding_is_persisted_without_runtime_registration() {
+        let mut app_settings = settings::get_default_settings();
+        app_settings.post_process_enabled = false;
+
+        assert!(binding_is_runtime_active(&app_settings, "transcribe"));
+        assert!(!binding_is_runtime_active(
+            &app_settings,
+            "transcribe_with_post_process"
+        ));
+        assert!(!binding_is_runtime_active(&app_settings, "cancel"));
+
+        app_settings.post_process_enabled = true;
+        assert!(binding_is_runtime_active(
+            &app_settings,
+            "transcribe_with_post_process"
+        ));
+    }
+
+    #[test]
+    fn shortcut_changes_are_persistence_only_while_capture_is_suspended() {
+        let mut app_settings = settings::get_default_settings();
+
+        assert!(binding_change_updates_runtime(
+            &app_settings,
+            "transcribe",
+            false
+        ));
+        assert!(!binding_change_updates_runtime(
+            &app_settings,
+            "transcribe",
+            true
+        ));
+
+        app_settings.post_process_enabled = false;
+        assert!(!binding_change_updates_runtime(
+            &app_settings,
+            "transcribe_with_post_process",
+            false
+        ));
+    }
+
+    #[test]
+    fn failed_capture_resume_runs_deterministic_recovery() {
+        let recovery_called = std::cell::Cell::new(false);
+
+        let result = recover_failed_shortcut_resume(Err("registration failed".to_string()), || {
+            recovery_called.set(true);
+            Ok(())
+        });
+
+        assert_eq!(result, Ok(()));
+        assert!(recovery_called.get());
+    }
+
+    #[test]
+    fn failed_capture_resume_reports_recovery_failure_without_hiding_cause() {
+        let result = recover_failed_shortcut_resume(Err("registration failed".to_string()), || {
+            Err("fallback failed".to_string())
+        });
+
+        assert_eq!(
+            result,
+            Err(
+                "Could not restore suspended shortcuts (registration failed); permission-free recovery failed (fallback failed)"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn shortcut_capture_suspend_restores_already_removed_bindings_on_failure() {
+        let bindings = vec![("first", 1), ("second", 2), ("third", 3)];
+        let suspended = std::cell::RefCell::new(Vec::new());
+        let restored = std::cell::RefCell::new(Vec::new());
+
+        let result = suspend_bindings_transactionally(
+            bindings,
+            |binding| {
+                if *binding == 2 {
+                    Err("native unregister failed".to_string())
+                } else {
+                    suspended.borrow_mut().push(*binding);
+                    Ok(())
+                }
+            },
+            |binding| {
+                restored.borrow_mut().push(*binding);
+                Ok(())
+            },
+        );
+
+        assert!(result
+            .unwrap_err()
+            .contains("Could not suspend shortcut 'second'"));
+        assert_eq!(*suspended.borrow(), vec![1]);
+        assert_eq!(*restored.borrow(), vec![1]);
+    }
+
+    #[test]
+    fn shortcut_capture_resume_rolls_back_partial_success_for_retry() {
+        let bindings = vec![("first", 1), ("second", 2), ("third", 3)];
+        let resumed = std::cell::RefCell::new(Vec::new());
+        let rolled_back = std::cell::RefCell::new(Vec::new());
+
+        let result = resume_bindings_transactionally(
+            bindings,
+            |binding| {
+                if *binding == 2 {
+                    Err("native register failed".to_string())
+                } else {
+                    resumed.borrow_mut().push(*binding);
+                    Ok(())
+                }
+            },
+            |binding| {
+                rolled_back.borrow_mut().push(*binding);
+                Ok(())
+            },
+        );
+
+        assert!(result
+            .unwrap_err()
+            .contains("Could not restore shortcut 'second'"));
+        assert_eq!(*resumed.borrow(), vec![1]);
+        assert_eq!(*rolled_back.borrow(), vec![1]);
     }
 
     #[test]
@@ -2434,5 +3062,27 @@ mod tests {
             settings::get_default_settings().bindings["transcribe"].current_binding
         );
         assert!(!app_settings.requires_macos_accessibility());
+    }
+
+    #[test]
+    fn bulk_shortcut_operations_include_only_active_static_bindings() {
+        let mut app_settings = settings::get_default_settings();
+
+        let disabled_ids: Vec<_> = active_static_bindings(&app_settings)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(disabled_ids, vec!["transcribe"]);
+
+        app_settings.post_process_enabled = true;
+        let enabled_ids: Vec<_> = active_static_bindings(&app_settings)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(
+            enabled_ids,
+            vec!["transcribe", "transcribe_with_post_process"]
+        );
+        assert!(!enabled_ids.contains(&"cancel"));
     }
 }

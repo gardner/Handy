@@ -10,6 +10,7 @@ lerna-debug.log*
 package-lock.json
 
 node_modules
+handy-keys/
 dist
 dist-ssr
 *.local
@@ -42,3 +43,6 @@ blob-report/
 
 # Nix build output
 result
+
+# Python bytecode (scripts/)
+__pycache__/

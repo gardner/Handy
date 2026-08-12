@@ -2,9 +2,13 @@ use crate::input::{self, EnigoState};
 #[cfg(target_os = "linux")]
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
-use enigo::{Direction, Enigo, Key, Keyboard};
-use log::{info, warn};
+use enigo::{Enigo, Key, Keyboard};
+use log::info;
+#[cfg(target_os = "macos")]
+use log::warn;
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -12,15 +16,157 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 #[cfg(target_os = "linux")]
 use crate::utils::{is_kde_wayland, is_wayland};
 
+fn with_enigo<T>(
+    app_handle: &AppHandle,
+    f: impl FnOnce(&mut Enigo) -> Result<T, String>,
+) -> Result<T, String> {
+    let enigo_state = app_handle
+        .try_state::<EnigoState>()
+        .ok_or("Enigo state not initialized")?;
+    let mut enigo = enigo_state
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
+    f(&mut enigo)
+}
+
+/// Runs a synthetic-input operation only when a fresh permission check passes.
+///
+/// The permission callback runs immediately before the injection closure.
+#[cfg(target_os = "macos")]
+pub(crate) fn run_synthetic_input_if_permitted<T>(
+    accessibility_granted: impl FnOnce() -> bool,
+    inject: impl FnOnce() -> Result<T, String>,
+) -> Result<Option<T>, String> {
+    if !accessibility_granted() {
+        return Ok(None);
+    }
+
+    inject().map(Some)
+}
+
+#[cfg(target_os = "macos")]
+fn classify_synthetic_input_result<T>(
+    result: Result<T, String>,
+    accessibility_granted: impl FnOnce() -> bool,
+) -> Result<Option<T>, String> {
+    let still_granted = accessibility_granted();
+    if !still_granted {
+        return Ok(None);
+    }
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn with_enigo_if_synthetic_input_permitted<T>(
+    app_handle: &AppHandle,
+    inject: impl FnOnce(&mut Enigo) -> Result<T, String>,
+) -> Result<Option<T>, String> {
+    let enigo_state = app_handle
+        .try_state::<EnigoState>()
+        .ok_or("Enigo state not initialized")?;
+    let mut enigo = enigo_state
+        .0
+        .lock()
+        .map_err(|e| format!("Failed to lock Enigo: {e}"))?;
+
+    run_synthetic_input_if_permitted(crate::shortcut::macos_accessibility_granted, || {
+        classify_synthetic_input_result(
+            inject(&mut enigo),
+            crate::shortcut::macos_accessibility_granted,
+        )
+    })
+    .map(Option::flatten)
+}
+
+fn write_text_to_clipboard(app_handle: &AppHandle, text: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    if is_wayland() && is_wl_copy_available() {
+        info!("Using wl-copy for clipboard write on Wayland");
+        return write_clipboard_via_wl_copy(text);
+    }
+
+    app_handle
+        .clipboard()
+        .write_text(text)
+        .map_err(|e| format!("Failed to write to clipboard: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn queue_macos_accessibility_fallback(app_handle: &AppHandle) {
+    let app = app_handle.clone();
+    if let Err(error) = std::thread::Builder::new()
+        .name("macos-accessibility-fallback".into())
+        .spawn(move || {
+            if let Err(error) =
+                crate::shortcut::fallback_to_minimum_permissions(&app, "permission_revoked")
+            {
+                warn!("Could not complete permission-free shortcut fallback: {error}");
+            }
+        })
+    {
+        warn!("Could not queue permission-free shortcut fallback: {error}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn preserve_transcription_after_accessibility_loss(
+    app_handle: &AppHandle,
+    text: &str,
+) -> Result<(), String> {
+    let copy_result = write_text_to_clipboard(app_handle, text)
+        .map_err(|error| format!("Failed to copy transcription after permission loss: {error}"));
+    if copy_result.is_ok() {
+        let _ = app_handle.emit("transcription-copied", ());
+    }
+
+    // Always schedule the fallback, even if the clipboard write failed. The
+    // worker acquires no Enigo guard from this call site, avoiding lock-order
+    // coupling with whichever synthetic-input path detected the revocation.
+    queue_macos_accessibility_fallback(app_handle);
+    copy_result
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PasteOutcome {
+    Pasted,
+    #[cfg(target_os = "macos")]
+    AccessibilityRevoked,
+}
+
+fn send_clipboard_paste_chord(enigo: &mut Enigo, paste_method: &PasteMethod) -> Result<(), String> {
+    match paste_method {
+        // The legacy path cannot detect a mistimed chord, so it keeps the
+        // conservative 100ms modifier hold.
+        PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo, 100),
+        PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo, 100),
+        PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo, 100),
+        _ => Err("Invalid paste method for clipboard paste".into()),
+    }
+}
+
+fn finish_clipboard_paste(
+    paste_result: Result<(), String>,
+    paste_delay_after_ms: u64,
+    restore_clipboard: impl FnOnce(),
+) -> Result<(), String> {
+    std::thread::sleep(Duration::from_millis(paste_delay_after_ms));
+    restore_clipboard();
+    paste_result
+}
+
 /// Pastes text using the clipboard: saves current content, writes text, sends paste keystroke, restores clipboard.
 fn paste_via_clipboard(
-    enigo: &mut Enigo,
     text: &str,
     app_handle: &AppHandle,
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
     paste_delay_after_ms: u64,
-) -> Result<(), String> {
+) -> Result<PasteOutcome, String> {
     let clipboard = app_handle.clipboard();
     let saved_text = clipboard.read_text().ok().filter(|t| !t.is_empty());
     // Only probe for an image when there is no text to restore. Text is by far the
@@ -33,69 +179,61 @@ fn paste_via_clipboard(
     };
 
     // Write text to clipboard first
-    // On Wayland, prefer wl-copy for better compatibility (especially with umlauts)
-    #[cfg(target_os = "linux")]
-    let write_result = if is_wayland() && is_wl_copy_available() {
-        info!("Using wl-copy for clipboard write on Wayland");
-        write_clipboard_via_wl_copy(text)
-    } else {
-        clipboard
-            .write_text(text)
-            .map_err(|e| format!("Failed to write to clipboard: {}", e))
-    };
-
-    #[cfg(not(target_os = "linux"))]
-    let write_result = clipboard
-        .write_text(text)
-        .map_err(|e| format!("Failed to write to clipboard: {}", e));
-
-    write_result?;
+    write_text_to_clipboard(app_handle, text)?;
 
     std::thread::sleep(Duration::from_millis(paste_delay_ms));
 
-    // Send paste key combo
-    #[cfg(target_os = "linux")]
-    let key_combo_sent = try_send_key_combo_linux(paste_method)?;
-
-    #[cfg(not(target_os = "linux"))]
-    let key_combo_sent = false;
-
-    // Fall back to enigo if no native tool handled it
-    if !key_combo_sent {
-        match paste_method {
-            PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo)?,
-            PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo)?,
-            PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo)?,
-            _ => return Err("Invalid paste method for clipboard paste".into()),
-        }
-    }
-
-    std::thread::sleep(Duration::from_millis(paste_delay_after_ms));
-
-    // Restore original clipboard content.
-    // Text takes priority so this path stays identical to the previous behavior;
-    // an image is only restored when the clipboard held no text at all, which is
-    // the case that used to silently wipe screenshots.
-    if let Some(clipboard_content) = saved_text {
-        // On Wayland, prefer wl-copy for better compatibility
+    #[cfg(not(target_os = "macos"))]
+    let send_paste_chord = || -> Result<(), String> {
+        // Send paste key combo
         #[cfg(target_os = "linux")]
-        if is_wayland() && is_wl_copy_available() {
-            let _ = write_clipboard_via_wl_copy(&clipboard_content);
-        } else {
-            let _ = clipboard.write_text(&clipboard_content);
-        }
+        let key_combo_sent = try_send_key_combo_linux(paste_method)?;
 
         #[cfg(not(target_os = "linux"))]
-        let _ = clipboard.write_text(&clipboard_content);
-    } else if let Some(image) = saved_image {
-        info!("Restoring image to clipboard");
-        let _ = clipboard.write_image(&image);
-    } else {
-        // Nothing was there to begin with — don't leave the transcription behind.
-        let _ = clipboard.clear();
-    }
+        let key_combo_sent = false;
 
-    Ok(())
+        // Fall back to enigo if no native tool handled it
+        if !key_combo_sent {
+            with_enigo(app_handle, |enigo| {
+                send_clipboard_paste_chord(enigo, paste_method)
+            })?;
+        }
+
+        Ok(())
+    };
+
+    // Capture key injection errors so the original clipboard is restored before
+    // propagating them to the caller. On macOS, permission may have been revoked
+    // during the configured delay, so recheck while holding Enigo immediately
+    // before entering the injection closure.
+    #[cfg(target_os = "macos")]
+    let paste_result = match with_enigo_if_synthetic_input_permitted(app_handle, |enigo| {
+        send_clipboard_paste_chord(enigo, paste_method)
+    })? {
+        Some(()) => Ok(()),
+        None => return Ok(PasteOutcome::AccessibilityRevoked),
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let paste_result = send_paste_chord();
+
+    finish_clipboard_paste(paste_result, paste_delay_after_ms, || {
+        // Restore original clipboard content even when key injection failed.
+        // Text takes priority so this path stays identical to the previous behavior;
+        // an image is only restored when the clipboard held no text at all, which is
+        // the case that used to silently wipe screenshots.
+        if let Some(clipboard_content) = saved_text {
+            let _ = write_text_to_clipboard(app_handle, &clipboard_content);
+        } else if let Some(image) = saved_image {
+            info!("Restoring image to clipboard");
+            let _ = clipboard.write_image(&image);
+        } else {
+            // Nothing was there to begin with — don't leave the transcription behind.
+            let _ = clipboard.clear();
+        }
+    })?;
+
+    Ok(PasteOutcome::Pasted)
 }
 
 /// Attempts to send a key combination using Linux-native tools.
@@ -259,6 +397,80 @@ fn is_dotool_available() -> bool {
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum YdotoolKeySyntax {
+    Symbolic,
+    RawKeycodes,
+}
+
+#[cfg(target_os = "linux")]
+const YDOTOOL_UNKNOWN_HELP_FALLBACK: YdotoolKeySyntax = YdotoolKeySyntax::RawKeycodes;
+
+#[cfg(target_os = "linux")]
+static YDOTOOL_KEY_SYNTAX: OnceLock<YdotoolKeySyntax> = OnceLock::new();
+
+/// Classifies `ydotool key --help` output without relying on version or distro metadata.
+#[cfg(target_os = "linux")]
+fn classify_ydotool_key_syntax(help: &str) -> Option<YdotoolKeySyntax> {
+    let help = help.to_ascii_lowercase();
+
+    // Check modern markers first in case a future help message mentions the legacy syntax.
+    if help.contains("syntax: <keycode>:<pressed>")
+        || help.contains("[keycodes]")
+        || help.contains("using raw keycodes")
+    {
+        Some(YdotoolKeySyntax::RawKeycodes)
+    } else if help.contains("separated by plus (+)")
+        || (help.contains("<key sequence>") && help.contains("alt+r"))
+    {
+        Some(YdotoolKeySyntax::Symbolic)
+    } else {
+        None
+    }
+}
+
+/// Detects and caches a recognized ydotool key syntax. Unknown or failed probes are not cached,
+/// allowing a transient daemon or PATH problem to recover on a later paste attempt.
+#[cfg(target_os = "linux")]
+fn detect_ydotool_key_syntax() -> YdotoolKeySyntax {
+    if let Some(syntax) = YDOTOOL_KEY_SYNTAX.get() {
+        return *syntax;
+    }
+
+    match Command::new("ydotool").args(["key", "--help"]).output() {
+        Ok(output) => {
+            // ydotool 0.x writes help to stderr and its exit status varies by build.
+            let mut help = String::from_utf8_lossy(&output.stdout).into_owned();
+            if !help.is_empty() && !output.stderr.is_empty() {
+                help.push('\n');
+            }
+            help.push_str(&String::from_utf8_lossy(&output.stderr));
+
+            if let Some(syntax) = classify_ydotool_key_syntax(&help) {
+                *YDOTOOL_KEY_SYNTAX.get_or_init(|| {
+                    info!("Detected ydotool key syntax: {:?}", syntax);
+                    syntax
+                })
+            } else {
+                // Preserve Handy's existing behavior and compatibility with current ydotool.
+                log::warn!(
+                    "Could not recognize ydotool key --help output (exit status {:?}); using raw-keycode syntax",
+                    output.status.code()
+                );
+                YDOTOOL_UNKNOWN_HELP_FALLBACK
+            }
+        }
+        Err(error) => {
+            log::warn!(
+                "Could not query ydotool key syntax: {}; using raw-keycode syntax",
+                error
+            );
+            YDOTOOL_UNKNOWN_HELP_FALLBACK
+        }
+    }
 }
 
 /// Check if ydotool is available (uinput-based, works on both Wayland and X11)
@@ -425,9 +637,11 @@ fn write_clipboard_via_wl_copy(text: &str) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn send_key_combo_via_wtype(paste_method: &PasteMethod) -> Result<(), String> {
     let args: Vec<&str> = match paste_method {
-        PasteMethod::CtrlV => vec!["-M", "ctrl", "-k", "v"],
-        PasteMethod::ShiftInsert => vec!["-M", "shift", "-k", "Insert"],
-        PasteMethod::CtrlShiftV => vec!["-M", "ctrl", "-M", "shift", "-k", "v"],
+        PasteMethod::CtrlV => vec!["-M", "ctrl", "-k", "v", "-m", "ctrl"],
+        PasteMethod::ShiftInsert => vec!["-M", "shift", "-k", "Insert", "-m", "shift"],
+        PasteMethod::CtrlShiftV => vec![
+            "-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl",
+        ],
         _ => return Err("Unsupported paste method".into()),
     };
 
@@ -469,20 +683,38 @@ fn send_key_combo_via_dotool(paste_method: &PasteMethod) -> Result<(), String> {
     Ok(())
 }
 
-/// Send a key combination (e.g., Ctrl+V) via ydotool (requires ydotoold daemon).
 #[cfg(target_os = "linux")]
-fn send_key_combo_via_ydotool(paste_method: &PasteMethod) -> Result<(), String> {
-    // ydotool uses Linux input event keycodes with format <keycode>:<pressed>
-    // where pressed is 1 for down, 0 for up. Keycodes: ctrl=29, shift=42, v=47, insert=110
-    let args: Vec<&str> = match paste_method {
-        PasteMethod::CtrlV => vec!["key", "29:1", "47:1", "47:0", "29:0"],
-        PasteMethod::ShiftInsert => vec!["key", "42:1", "110:1", "110:0", "42:0"],
-        PasteMethod::CtrlShiftV => vec!["key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"],
+fn ydotool_key_args(
+    paste_method: &PasteMethod,
+    syntax: YdotoolKeySyntax,
+) -> Result<&'static [&'static str], String> {
+    let args = match (paste_method, syntax) {
+        (PasteMethod::CtrlV, YdotoolKeySyntax::Symbolic) => &["key", "ctrl+v"][..],
+        (PasteMethod::CtrlShiftV, YdotoolKeySyntax::Symbolic) => &["key", "ctrl+shift+v"][..],
+        (PasteMethod::ShiftInsert, YdotoolKeySyntax::Symbolic) => &["key", "shift+insert"][..],
+        (PasteMethod::CtrlV, YdotoolKeySyntax::RawKeycodes) => {
+            &["key", "29:1", "47:1", "47:0", "29:0"][..]
+        }
+        (PasteMethod::CtrlShiftV, YdotoolKeySyntax::RawKeycodes) => {
+            &["key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"][..]
+        }
+        (PasteMethod::ShiftInsert, YdotoolKeySyntax::RawKeycodes) => {
+            &["key", "42:1", "110:1", "110:0", "42:0"][..]
+        }
         _ => return Err("Unsupported paste method".into()),
     };
 
+    Ok(args)
+}
+
+/// Send a key combination (e.g., Ctrl+V) via ydotool (requires ydotoold daemon).
+#[cfg(target_os = "linux")]
+fn send_key_combo_via_ydotool(paste_method: &PasteMethod) -> Result<(), String> {
+    let syntax = detect_ydotool_key_syntax();
+    let args = ydotool_key_args(paste_method, syntax)?;
+
     let output = Command::new("ydotool")
-        .args(&args)
+        .args(args)
         .output()
         .map_err(|e| format!("Failed to execute ydotool: {}", e))?;
 
@@ -546,70 +778,49 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
 
 /// Types text directly by simulating individual key presses.
 fn paste_direct(
-    enigo: &mut Enigo,
     text: &str,
+    app_handle: &AppHandle,
     #[cfg(target_os = "linux")] typing_tool: TypingTool,
-) -> Result<(), String> {
+) -> Result<PasteOutcome, String> {
     #[cfg(target_os = "linux")]
     {
         if try_direct_typing_linux(text, typing_tool)? {
-            return Ok(());
+            return Ok(PasteOutcome::Pasted);
         }
         info!("Falling back to enigo for direct text input");
     }
 
-    input::paste_text_direct(enigo, text)
+    #[cfg(target_os = "macos")]
+    return match with_enigo_if_synthetic_input_permitted(app_handle, |enigo| {
+        input::paste_text_direct(enigo, text)
+    })? {
+        Some(()) => Ok(PasteOutcome::Pasted),
+        None => Ok(PasteOutcome::AccessibilityRevoked),
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        with_enigo(app_handle, |enigo| input::paste_text_direct(enigo, text))?;
+        Ok(PasteOutcome::Pasted)
+    }
 }
 
-fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), String> {
-    match key_type {
-        AutoSubmitKey::Enter => {
-            enigo
-                .key(Key::Return, Direction::Press)
-                .map_err(|e| format!("Failed to press Return key: {}", e))?;
-            enigo
-                .key(Key::Return, Direction::Release)
-                .map_err(|e| format!("Failed to release Return key: {}", e))?;
-        }
-        AutoSubmitKey::CtrlEnter => {
-            enigo
-                .key(Key::Control, Direction::Press)
-                .map_err(|e| format!("Failed to press Control key: {}", e))?;
-            enigo
-                .key(Key::Return, Direction::Press)
-                .map_err(|e| format!("Failed to press Return key: {}", e))?;
-            enigo
-                .key(Key::Return, Direction::Release)
-                .map_err(|e| format!("Failed to release Return key: {}", e))?;
-            enigo
-                .key(Key::Control, Direction::Release)
-                .map_err(|e| format!("Failed to release Control key: {}", e))?;
-        }
-        AutoSubmitKey::CmdEnter => {
-            enigo
-                .key(Key::Meta, Direction::Press)
-                .map_err(|e| format!("Failed to press Meta/Cmd key: {}", e))?;
-            enigo
-                .key(Key::Return, Direction::Press)
-                .map_err(|e| format!("Failed to press Return key: {}", e))?;
-            enigo
-                .key(Key::Return, Direction::Release)
-                .map_err(|e| format!("Failed to release Return key: {}", e))?;
-            enigo
-                .key(Key::Meta, Direction::Release)
-                .map_err(|e| format!("Failed to release Meta/Cmd key: {}", e))?;
-        }
-    }
+pub(crate) fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), String> {
+    let modifiers: &[Key] = match key_type {
+        AutoSubmitKey::Enter => &[],
+        AutoSubmitKey::CtrlEnter => &[Key::Control],
+        AutoSubmitKey::CmdEnter => &[Key::Meta],
+    };
 
-    Ok(())
+    input::send_key_chord(modifiers, Key::Return, 0, |key, direction| {
+        enigo
+            .key(key, direction)
+            .map_err(|error| format!("Failed to send {direction:?} for {key:?}: {error}"))
+    })
 }
 
 fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool {
     auto_submit && paste_method != PasteMethod::None
-}
-
-fn paste_requires_enigo(paste_method: PasteMethod, auto_submit: bool) -> bool {
-    paste_method.requires_synthetic_input(auto_submit)
 }
 
 fn should_notify_manual_copy(
@@ -646,18 +857,7 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         settings.auto_submit,
         crate::shortcut::macos_accessibility_granted(),
     ) {
-        if let Err(error) =
-            crate::shortcut::fallback_to_minimum_permissions(&app_handle, "permission_revoked")
-        {
-            warn!(
-                "Could not complete permission-free shortcut fallback; preserving transcription: {}",
-                error
-            );
-        }
-        app_handle.clipboard().write_text(&text).map_err(|error| {
-            format!("Failed to copy transcription after permission loss: {error}")
-        })?;
-        let _ = app_handle.emit("transcription-copied", ());
+        preserve_transcription_after_accessibility_loss(&app_handle, &text)?;
         return Ok(());
     }
 
@@ -666,51 +866,66 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         paste_method, paste_delay_ms, paste_delay_after_ms
     );
 
-    // Clipboard-only and external-script output must work without macOS
-    // Accessibility. Acquire Enigo only for paths that synthesize input.
-    let enigo_state = if paste_requires_enigo(paste_method, settings.auto_submit) {
-        Some(
-            app_handle
-                .try_state::<EnigoState>()
-                .ok_or("Enigo state not initialized")?,
-        )
-    } else {
-        None
-    };
-    let mut enigo = enigo_state
-        .as_ref()
-        .map(|state| {
-            state
-                .0
-                .lock()
-                .map_err(|e| format!("Failed to lock Enigo: {}", e))
-        })
-        .transpose()?;
-
     // Perform the paste operation
     match paste_method {
         PasteMethod::None => {
             info!("PasteMethod::None selected - skipping paste action");
         }
         PasteMethod::Direct => {
-            let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
-            paste_direct(
-                enigo,
+            let outcome = paste_direct(
                 &text,
+                &app_handle,
                 #[cfg(target_os = "linux")]
                 settings.typing_tool,
             )?;
+            #[cfg(target_os = "macos")]
+            if outcome == PasteOutcome::AccessibilityRevoked {
+                preserve_transcription_after_accessibility_loss(&app_handle, &text)?;
+                return Ok(());
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = outcome;
         }
         PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert => {
-            let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
-            paste_via_clipboard(
-                enigo,
+            // Debug-gated receipt-sequenced paste (#502): restore the clipboard
+            // after the target actually reads the transcript, not on a timer.
+            // On success it fully handles the paste (including auto-submit and
+            // clipboard handling) asynchronously; on failure fall through to
+            // the legacy path untouched.
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            if settings.reliable_paste {
+                let reliable_result = with_enigo(&app_handle, |enigo| {
+                    crate::paste_tx::try_reliable_paste(
+                        &text,
+                        &app_handle,
+                        &paste_method,
+                        enigo,
+                        settings.auto_submit,
+                        settings.auto_submit_key,
+                        settings.clipboard_handling,
+                    )
+                });
+                match reliable_result {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        log::warn!("Reliable paste unavailable ({e}); falling back to legacy paste")
+                    }
+                }
+            }
+            let outcome = paste_via_clipboard(
                 &text,
                 &app_handle,
                 &paste_method,
                 paste_delay_ms,
                 paste_delay_after_ms,
-            )?
+            )?;
+            #[cfg(target_os = "macos")]
+            if outcome == PasteOutcome::AccessibilityRevoked {
+                preserve_transcription_after_accessibility_loss(&app_handle, &text)?;
+                return Ok(());
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = outcome;
         }
         PasteMethod::ExternalScript => {
             let script_path = settings
@@ -724,16 +939,36 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
 
     if should_send_auto_submit(settings.auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
-        let enigo = enigo.as_deref_mut().ok_or("Enigo state not initialized")?;
-        send_return_key(enigo, settings.auto_submit_key)?;
+
+        #[cfg(target_os = "macos")]
+        let auto_submit_result = with_enigo_if_synthetic_input_permitted(&app_handle, |enigo| {
+            send_return_key(enigo, settings.auto_submit_key)
+        });
+
+        #[cfg(not(target_os = "macos"))]
+        let auto_submit_result = with_enigo(&app_handle, |enigo| {
+            send_return_key(enigo, settings.auto_submit_key)
+        })
+        .map(Some);
+
+        match auto_submit_result {
+            Ok(Some(())) => {}
+            Ok(None) => {
+                #[cfg(target_os = "macos")]
+                {
+                    preserve_transcription_after_accessibility_loss(&app_handle, &text)?;
+                    return Ok(());
+                }
+            }
+            Err(error) => {
+                log::warn!("Paste succeeded, but auto-submit failed: {error}");
+            }
+        }
     }
 
     // After pasting, optionally copy to clipboard based on settings
     if settings.clipboard_handling == ClipboardHandling::CopyToClipboard {
-        let clipboard = app_handle.clipboard();
-        clipboard
-            .write_text(&text)
-            .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+        write_text_to_clipboard(&app_handle, &text)?;
         if should_notify_manual_copy(paste_method, settings.clipboard_handling) {
             let _ = app_handle.emit("transcription-copied", ());
         }
@@ -745,6 +980,84 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[cfg(target_os = "linux")]
+    const YDOTOOL_0_1_8_HELP: &str = r#"
+Usage: key [--delay <ms>] [--key-delay <ms>] [--repeat <times>] [--repeat-delay <ms>] <key sequence> ...
+Each key sequence can be any number of modifiers and keys, separated by plus (+)
+For example: alt+r Alt+F4 CTRL+alt+f3 aLT+1+2+3 ctrl+Backspace
+"#;
+
+    #[cfg(target_os = "linux")]
+    const YDOTOOL_1_0_4_HELP: &str = r#"
+Usage: key [OPTION]... [KEYCODES]...
+Since there's no way to know how many keyboard layouts are there in the world,
+we're using raw keycodes now.
+Syntax: <keycode>:<pressed>
+e.g. 28:1 28:0 means pressing on the Enter button on a standard US keyboard.
+"#;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn classifies_ydotool_0_1_8_symbolic_help() {
+        assert_eq!(
+            classify_ydotool_key_syntax(YDOTOOL_0_1_8_HELP),
+            Some(YdotoolKeySyntax::Symbolic)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn classifies_ydotool_1_0_4_raw_keycode_help() {
+        assert_eq!(
+            classify_ydotool_key_syntax(YDOTOOL_1_0_4_HELP),
+            Some(YdotoolKeySyntax::RawKeycodes)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn unknown_ydotool_help_falls_back_to_raw_keycodes() {
+        let syntax = classify_ydotool_key_syntax("unrecognized help output")
+            .unwrap_or(YDOTOOL_UNKNOWN_HELP_FALLBACK);
+
+        assert_eq!(syntax, YdotoolKeySyntax::RawKeycodes);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn generates_symbolic_ydotool_arguments_for_all_paste_methods() {
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::CtrlV, YdotoolKeySyntax::Symbolic).unwrap(),
+            ["key", "ctrl+v"]
+        );
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::CtrlShiftV, YdotoolKeySyntax::Symbolic).unwrap(),
+            ["key", "ctrl+shift+v"]
+        );
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::ShiftInsert, YdotoolKeySyntax::Symbolic).unwrap(),
+            ["key", "shift+insert"]
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn generates_raw_ydotool_arguments_for_all_paste_methods() {
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::CtrlV, YdotoolKeySyntax::RawKeycodes).unwrap(),
+            ["key", "29:1", "47:1", "47:0", "29:0"]
+        );
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::CtrlShiftV, YdotoolKeySyntax::RawKeycodes).unwrap(),
+            ["key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
+        );
+        assert_eq!(
+            ydotool_key_args(&PasteMethod::ShiftInsert, YdotoolKeySyntax::RawKeycodes).unwrap(),
+            ["key", "42:1", "110:1", "110:0", "42:0"]
+        );
+    }
 
     #[test]
     fn auto_submit_requires_setting_enabled() {
@@ -763,29 +1076,6 @@ mod tests {
         assert!(should_send_auto_submit(true, PasteMethod::Direct));
         assert!(should_send_auto_submit(true, PasteMethod::CtrlShiftV));
         assert!(should_send_auto_submit(true, PasteMethod::ShiftInsert));
-    }
-
-    #[test]
-    fn disabled_paste_does_not_initialize_synthetic_input() {
-        assert!(!paste_requires_enigo(PasteMethod::None, true));
-    }
-
-    #[test]
-    fn external_script_only_initializes_synthetic_input_for_auto_submit() {
-        assert!(!paste_requires_enigo(PasteMethod::ExternalScript, false));
-        assert!(paste_requires_enigo(PasteMethod::ExternalScript, true));
-    }
-
-    #[test]
-    fn automatic_input_methods_initialize_synthetic_input() {
-        for method in [
-            PasteMethod::CtrlV,
-            PasteMethod::Direct,
-            PasteMethod::CtrlShiftV,
-            PasteMethod::ShiftInsert,
-        ] {
-            assert!(paste_requires_enigo(method, false));
-        }
     }
 
     #[test]
@@ -826,5 +1116,74 @@ mod tests {
             false,
             true
         ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn point_of_use_gate_skips_injection_after_accessibility_revocation() {
+        let injected = Cell::new(false);
+
+        let result = run_synthetic_input_if_permitted(
+            || false,
+            || {
+                injected.set(true);
+                Ok(())
+            },
+        )
+        .expect("a denied injection is a safe, handled outcome");
+
+        assert_eq!(result, None);
+        assert!(!injected.get());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn point_of_use_gate_checks_permission_immediately_before_injection() {
+        let events = std::cell::RefCell::new(Vec::new());
+
+        let result = run_synthetic_input_if_permitted(
+            || {
+                events.borrow_mut().push("permission");
+                true
+            },
+            || {
+                events.borrow_mut().push("injection");
+                Ok(7)
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result, Some(7));
+        assert_eq!(*events.borrow(), ["permission", "injection"]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn injection_error_after_revocation_becomes_a_safe_manual_paste_outcome() {
+        assert_eq!(
+            classify_synthetic_input_result::<()>(Err("native input failed".into()), || false),
+            Ok(None)
+        );
+        assert_eq!(
+            classify_synthetic_input_result::<()>(Err("native input failed".into()), || true),
+            Err("native input failed".into())
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn successful_native_send_followed_by_revocation_still_preserves_manual_paste() {
+        assert_eq!(classify_synthetic_input_result(Ok(7), || false), Ok(None));
+    }
+
+    #[test]
+    fn clipboard_is_restored_before_key_injection_error_is_returned() {
+        let restored = Cell::new(false);
+        let result = finish_clipboard_paste(Err("input failed".into()), 0, || {
+            restored.set(true);
+        });
+
+        assert_eq!(result.unwrap_err(), "input failed");
+        assert!(restored.get());
     }
 }

@@ -10,6 +10,7 @@ import {
   accessibilityFeatureAvailable,
   pasteMethodRequiresAccessibility,
 } from "@/lib/accessibility";
+import type { OSType } from "@/lib/utils/keyboard";
 import { useAccessibilityStore } from "@/stores/accessibilityStore";
 import { AccessibilityRequiredNote } from "./AccessibilityRequiredNote";
 
@@ -28,7 +29,7 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
     const selectedMethod = (getSetting("paste_method") ||
       "ctrl_v") as PasteMethod;
 
-    const getPasteMethodOptions = (osType: string) => {
+    const getPasteMethodOptions = (osType: OSType) => {
       const mod = osType === "macos" ? "Cmd" : "Ctrl";
 
       const options: DropdownOption[] = [

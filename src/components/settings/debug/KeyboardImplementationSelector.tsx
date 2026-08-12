@@ -13,11 +13,6 @@ import {
 import { useAccessibilityStore } from "@/stores/accessibilityStore";
 import { AccessibilityRequiredNote } from "../AccessibilityRequiredNote";
 
-const KEYBOARD_IMPLEMENTATION_OPTIONS: DropdownOption[] = [
-  { value: "tauri", label: "Tauri Global Shortcut" },
-  { value: "handy_keys", label: "Handy Keys" },
-];
-
 interface KeyboardImplementationSelectorProps {
   descriptionMode?: "tooltip" | "inline";
   grouped?: boolean;
@@ -30,20 +25,30 @@ export const KeyboardImplementationSelector: React.FC<
   const osType = useOsType();
   const { getSetting, isUpdating, refreshSettings } = useSettings();
   const accessibilityStatus = useAccessibilityStore((state) => state.status);
+  const [isChangingImplementation, setIsChangingImplementation] =
+    React.useState(false);
   const currentImplementation =
     getSetting("keyboard_implementation") ?? "tauri";
-  const options = KEYBOARD_IMPLEMENTATION_OPTIONS.map((option) => ({
-    ...option,
-    disabled: !accessibilityFeatureAvailable(
-      osType,
-      accessibilityStatus,
-      keyboardImplementationRequiresAccessibility(osType, option.value),
-    ),
-  }));
+  const keyboardImplementationOptions: DropdownOption[] = [
+    {
+      value: "tauri",
+      label: "Tauri Global Shortcut",
+    },
+    {
+      value: "handy_keys",
+      label: "Handy Keys",
+      disabled: !accessibilityFeatureAvailable(
+        osType,
+        accessibilityStatus,
+        keyboardImplementationRequiresAccessibility(osType, "handy_keys"),
+      ),
+    },
+  ];
 
   const handleSelect = async (value: string) => {
-    if (value === currentImplementation) return;
+    if (value === currentImplementation || isChangingImplementation) return;
 
+    setIsChangingImplementation(true);
     try {
       const result = await commands.changeKeyboardImplementationSetting(value);
 
@@ -65,6 +70,8 @@ export const KeyboardImplementationSelector: React.FC<
     } catch (error) {
       console.error("Failed to update keyboard implementation:", error);
       toast.error(String(error));
+    } finally {
+      setIsChangingImplementation(false);
     }
   };
 
@@ -78,10 +85,12 @@ export const KeyboardImplementationSelector: React.FC<
     >
       <div className="flex flex-col gap-2">
         <Dropdown
-          options={options}
+          options={keyboardImplementationOptions}
           selectedValue={currentImplementation}
           onSelect={handleSelect}
-          disabled={isUpdating("keyboard_implementation")}
+          disabled={
+            isChangingImplementation || isUpdating("keyboard_implementation")
+          }
         />
         {osType === "macos" && accessibilityStatus === "denied" && (
           <AccessibilityRequiredNote />

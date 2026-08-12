@@ -2,10 +2,12 @@ import React from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { GlobalShortcutInput } from "./GlobalShortcutInput";
 import { HandyKeysShortcutInput } from "./HandyKeysShortcutInput";
+import type { KeyboardImplementation } from "@/bindings";
 import { useOsType } from "@/hooks/useOsType";
 import {
   accessibilityFeatureAvailable,
-  keyboardImplementationRequiresAccessibility,
+  shortcutBindingRequiresAccessibility,
+  shortcutEditorRequiresAccessibility,
 } from "@/lib/accessibility";
 import { useAccessibilityStore } from "@/stores/accessibilityStore";
 import { AccessibilityRequiredNote } from "./AccessibilityRequiredNote";
@@ -28,35 +30,47 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = (props) => {
   const { getSetting } = useSettings();
   const osType = useOsType();
   const accessibilityStatus = useAccessibilityStore((state) => state.status);
-  const keyboardImplementation = getSetting("keyboard_implementation");
+  const keyboardImplementation = (getSetting("keyboard_implementation") ??
+    "tauri") as KeyboardImplementation;
+  const currentBinding =
+    getSetting("bindings")?.[props.shortcutId]?.current_binding ?? "";
+  const bindingAccessibilityUnavailable = !accessibilityFeatureAvailable(
+    osType,
+    accessibilityStatus,
+    shortcutBindingRequiresAccessibility(
+      osType,
+      keyboardImplementation,
+      currentBinding,
+    ),
+  );
+  const editorAccessibilityUnavailable = !accessibilityFeatureAvailable(
+    osType,
+    accessibilityStatus,
+    shortcutEditorRequiresAccessibility(osType, keyboardImplementation),
+  );
+  const inputProps = {
+    ...props,
+    disabled: props.disabled || editorAccessibilityUnavailable,
+  };
 
   // Default to Tauri implementation if not set
-  if (keyboardImplementation === "handy_keys") {
-    const accessibilityUnavailable = !accessibilityFeatureAvailable(
-      osType,
-      accessibilityStatus,
-      keyboardImplementationRequiresAccessibility(
-        osType,
-        keyboardImplementation,
-      ),
+  const input =
+    keyboardImplementation === "handy_keys" ? (
+      <HandyKeysShortcutInput {...inputProps} />
+    ) : (
+      <GlobalShortcutInput {...inputProps} />
     );
 
-    return (
-      <>
-        <HandyKeysShortcutInput
-          {...props}
-          disabled={props.disabled || accessibilityUnavailable}
-        />
-        {accessibilityUnavailable &&
-          osType === "macos" &&
-          accessibilityStatus === "denied" && (
-            <div className="px-4 py-2">
-              <AccessibilityRequiredNote />
-            </div>
-          )}
-      </>
-    );
-  }
-
-  return <GlobalShortcutInput {...props} />;
+  return (
+    <>
+      {input}
+      {bindingAccessibilityUnavailable &&
+        osType === "macos" &&
+        accessibilityStatus === "denied" && (
+          <div className="px-4 py-2">
+            <AccessibilityRequiredNote />
+          </div>
+        )}
+    </>
+  );
 };

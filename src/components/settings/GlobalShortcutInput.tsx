@@ -11,6 +11,8 @@ import { useSettings } from "../../hooks/useSettings";
 import { useOsType } from "../../hooks/useOsType";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
+import { unwrapCommandResult } from "@/lib/permissions";
+import { createShortcutCaptureOwner } from "@/lib/accessibility";
 
 interface GlobalShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
@@ -35,9 +37,32 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
   );
   const [originalBinding, setOriginalBinding] = useState<string>("");
   const shortcutRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const captureOwnerRef = useRef<string | null>(null);
   const osType = useOsType();
 
   const bindings = getSetting("bindings") || {};
+
+  const restoreSuspendedBindings = React.useCallback(async () => {
+    const captureOwner = captureOwnerRef.current;
+    if (!captureOwner) return;
+
+    unwrapCommandResult(
+      await commands.resumeAllBindings(captureOwner),
+      "Restore shortcuts",
+    );
+    if (captureOwnerRef.current === captureOwner) {
+      captureOwnerRef.current = null;
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      // Navigation or window teardown can interrupt capture without a key-up
+      // or click-outside event. Restore the suspended shortcuts in that case.
+      void restoreSuspendedBindings().catch(console.error);
+    },
+    [restoreSuspendedBindings],
+  );
 
   useEffect(() => {
     // Only add event listeners when we're in editing mode
@@ -124,6 +149,19 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
             }
           }
 
+          // Re-register all bindings (the one just committed is already
+          // registered; re-registering it fails cleanly and is ignored)
+          try {
+            await restoreSuspendedBindings();
+          } catch (error) {
+            console.error("Failed to restore shortcuts:", error);
+            toast.error(t("settings.general.shortcut.errors.restore"));
+            // Keep this capture and its lease visible so another key or
+            // click-outside action can retry backend recovery. Clearing the
+            // editor here would hide globally suspended shortcuts.
+            return;
+          }
+
           // Exit editing mode and reset states
           setEditingShortcutId(null);
           setKeyPressed([]);
@@ -146,8 +184,15 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
             console.error("Failed to restore original binding:", error);
             toast.error(t("settings.general.shortcut.errors.restore"));
           }
-        } else if (editingShortcutId) {
-          commands.resumeBinding(editingShortcutId).catch(console.error);
+        }
+        try {
+          await restoreSuspendedBindings();
+        } catch (error) {
+          console.error("Failed to restore shortcuts:", error);
+          toast.error(t("settings.general.shortcut.errors.restore"));
+          // The backend retains this capture lease when recovery fails. Keep
+          // the matching editor active so a later click can retry it.
+          return;
         }
         setEditingShortcutId(null);
         setKeyPressed([]);
@@ -174,14 +219,36 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
     originalBinding,
     updateBinding,
     osType,
+    restoreSuspendedBindings,
   ]);
 
   // Start recording a new shortcut
   const startRecording = async (id: string) => {
-    if (editingShortcutId === id) return; // Already editing this shortcut
+    if (disabled || editingShortcutId === id || captureOwnerRef.current) return;
 
-    // Suspend current binding to avoid firing while recording
-    await commands.suspendBinding(id).catch(console.error);
+    // Every edit gets a unique lease. Keep it until the matching restore has
+    // completed so cleanup from an older async handler cannot resume or clear
+    // a newer capture of the same binding.
+    const captureOwner = createShortcutCaptureOwner(`tauri:${id}`);
+    captureOwnerRef.current = captureOwner;
+
+    // Suspend all bindings so no shortcut fires (or swallows the
+    // keystrokes) while keys are being recorded
+    try {
+      unwrapCommandResult(
+        await commands.suspendAllBindings(captureOwner),
+        "Suspend shortcuts",
+      );
+    } catch (error) {
+      if (captureOwnerRef.current === captureOwner) {
+        captureOwnerRef.current = null;
+      }
+      console.error("Failed to suspend shortcuts:", error);
+      toast.error(
+        t("settings.general.shortcut.errors.set", { error: String(error) }),
+      );
+      return;
+    }
 
     // Store the original binding to restore if canceled
     setOriginalBinding(bindings[id]?.current_binding || "");
@@ -281,15 +348,20 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
           </div>
         ) : (
           <div
-            className="px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
-            onClick={() => startRecording(shortcutId)}
+            className={`px-2 py-1 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/80 rounded-md ${
+              disabled
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-logo-primary/10 cursor-pointer hover:border-logo-primary"
+            }`}
+            onClick={disabled ? undefined : () => startRecording(shortcutId)}
+            aria-disabled={disabled}
           >
             {formatKeyCombination(binding.current_binding, osType)}
           </div>
         )}
         <ResetButton
           onClick={() => resetBinding(shortcutId)}
-          disabled={isUpdating(`binding_${shortcutId}`)}
+          disabled={disabled || isUpdating(`binding_${shortcutId}`)}
         />
       </div>
     </SettingContainer>

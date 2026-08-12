@@ -15,6 +15,8 @@ import {
 } from "@/lib/permissions";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAccessibilityStore } from "@/stores/accessibilityStore";
+import { shortcutBindingRequiresAccessibility } from "@/lib/accessibility";
+import { formatKeyCombination } from "@/lib/utils/keyboard";
 import HandyTextLogo from "../icons/HandyTextLogo";
 import { AlertTriangle, Keyboard, Mic, Check, Loader2 } from "lucide-react";
 
@@ -41,6 +43,8 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     (state) => state.refreshOutputDevices,
   );
   const refreshSettings = useSettingsStore((state) => state.refreshSettings);
+  const settings = useSettingsStore((state) => state.settings);
+  const defaultSettings = useSettingsStore((state) => state.defaultSettings);
   const [permissionPlatform, setPermissionPlatform] =
     useState<PermissionPlatform | null>(null);
   const [accessibilityRequired, setAccessibilityRequired] = useState<
@@ -63,6 +67,21 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
   const isWindows = permissionPlatform === "windows";
   const showMicrophonePermission = isMacOS || isWindows;
   const showAccessibilityPermission = isMacOS && accessibilityRequired === true;
+  const configuredRecordingShortcut =
+    settings?.bindings?.transcribe?.current_binding;
+  const defaultRecordingShortcut =
+    defaultSettings?.bindings?.transcribe?.current_binding ?? "option+space";
+  const minimumModeRecordingShortcut = formatKeyCombination(
+    configuredRecordingShortcut &&
+      !shortcutBindingRequiresAccessibility(
+        "macos",
+        "tauri",
+        configuredRecordingShortcut,
+      )
+      ? configuredRecordingShortcut
+      : defaultRecordingShortcut,
+    "macos",
+  );
 
   const allGranted = isMacOS
     ? accessibilityRequired !== null &&
@@ -115,34 +134,24 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
 
     const checkInitial = async () => {
       if (nextPlatform === "macos") {
-        try {
-          const [requiresAccessibility, microphoneGranted] = await Promise.all([
+        const [policyResult, microphoneResult, accessibilityResult] =
+          await Promise.allSettled([
             commands.macosAccessibilityRequired(),
             checkMicrophonePermission(),
+            checkAccessibilityPermission(),
           ]);
-          const accessibilityGranted = requiresAccessibility
-            ? await checkAccessibilityPermission()
-            : false;
-          if (requiresAccessibility) {
-            useAccessibilityStore
-              .getState()
-              .setPermissionGranted(accessibilityGranted);
-          }
-          setAccessibilityRequired(requiresAccessibility);
+        const microphoneGranted =
+          microphoneResult.status === "fulfilled" && microphoneResult.value;
 
-          // Initialize Accessibility-backed input only when it is selected.
-          if (requiresAccessibility && accessibilityGranted) {
-            try {
-              const [enigoResult, shortcutsResult] = await Promise.all([
-                commands.initializeEnigo(),
-                commands.initializeShortcuts(),
-              ]);
-              unwrapCommandResult(enigoResult, "Initialize synthetic input");
-              unwrapCommandResult(shortcutsResult, "Initialize shortcuts");
-            } catch (e) {
-              console.warn("Failed to initialize after permission grant:", e);
-            }
-          }
+        if (policyResult.status === "fulfilled") {
+          const requiresAccessibility = policyResult.value;
+          const accessibilityGranted =
+            accessibilityResult.status === "fulfilled" &&
+            accessibilityResult.value;
+          useAccessibilityStore
+            .getState()
+            .setPermissionGranted(accessibilityGranted);
+          setAccessibilityRequired(requiresAccessibility);
 
           const newState: PermissionsState = {
             accessibility:
@@ -160,14 +169,30 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           ) {
             await completeOnboarding();
           }
-        } catch (error) {
-          console.error("Failed to check macOS permissions:", error);
+        } else {
+          console.error(
+            "Failed to check Accessibility policy:",
+            policyResult.reason,
+          );
           toast.error(t("onboarding.permissions.errors.checkFailed"));
           setAccessibilityRequired(true);
           setPermissions({
             accessibility: "needed",
-            microphone: "needed",
+            microphone: microphoneGranted ? "granted" : "needed",
           });
+        }
+
+        if (microphoneResult.status === "rejected") {
+          console.error(
+            "Failed to check microphone permission:",
+            microphoneResult.reason,
+          );
+        }
+        if (accessibilityResult.status === "rejected") {
+          console.error(
+            "Failed to check Accessibility permission:",
+            accessibilityResult.reason,
+          );
         }
 
         return;
@@ -222,44 +247,27 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         }
 
         const microphoneGranted = await checkMicrophonePermission();
-        const accessibilityGranted = accessibilityRequired
-          ? await checkAccessibilityPermission()
-          : false;
+        let accessibilityGranted = false;
+        if (accessibilityRequired) {
+          try {
+            accessibilityGranted = await checkAccessibilityPermission();
+          } catch (error) {
+            console.error("Error checking Accessibility permission:", error);
+          }
+        }
         if (accessibilityRequired) {
           useAccessibilityStore
             .getState()
             .setPermissionGranted(accessibilityGranted);
         }
 
-        setPermissions((prev) => {
-          const newState = { ...prev };
-
-          if (
-            accessibilityRequired &&
-            accessibilityGranted &&
-            prev.accessibility !== "granted"
-          ) {
-            newState.accessibility = "granted";
-            // Initialize Enigo and shortcuts when accessibility is granted
-            Promise.all([
-              commands.initializeEnigo(),
-              commands.initializeShortcuts(),
-            ])
-              .then(([enigoResult, shortcutsResult]) => {
-                unwrapCommandResult(enigoResult, "Initialize synthetic input");
-                unwrapCommandResult(shortcutsResult, "Initialize shortcuts");
-              })
-              .catch((e) => {
-                console.warn("Failed to initialize after permission grant:", e);
-              });
-          }
-
-          if (microphoneGranted && prev.microphone !== "granted") {
-            newState.microphone = "granted";
-          }
-
-          return newState;
-        });
+        setPermissions((prev) => ({
+          accessibility:
+            accessibilityRequired && accessibilityGranted
+              ? "granted"
+              : prev.accessibility,
+          microphone: microphoneGranted ? "granted" : prev.microphone,
+        }));
 
         // If both granted, stop polling, refresh audio devices, and proceed
         if (
@@ -341,17 +349,17 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     setIsApplyingMinimumPermissions(true);
 
     try {
-      const result = await commands.configureMinimumPermissions();
-      if (result.status === "error") {
-        throw new Error(String(result.error));
-      }
+      const result = unwrapCommandResult(
+        await commands.configureMinimumPermissions(),
+        "Configure minimum-permissions mode",
+      );
 
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
 
-      if (result.data.reset_bindings.length > 0) {
+      if (result.reset_bindings.length > 0) {
         toast.warning(t("settings.debug.keyboardImplementation.bindingsReset"));
       }
 
@@ -522,6 +530,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
                       <p className="mt-1 text-sm text-text/70">
                         {t(
                           "onboarding.permissions.minimumModeWarningDescription",
+                          { shortcut: minimumModeRecordingShortcut },
                         )}
                       </p>
                       <div className="mt-4 flex justify-end gap-2">

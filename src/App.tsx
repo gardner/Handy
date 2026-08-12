@@ -10,8 +10,10 @@ import {
 import { ModelStateEvent, RecordingErrorEvent } from "./lib/types/events";
 import "./App.css";
 import AccessibilityPermissions from "./components/AccessibilityPermissions";
+import SecureInputWarning from "./components/SecureInputWarning";
 import Footer from "./components/footer";
 import Onboarding, { AccessibilityOnboarding } from "./components/onboarding";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
 import { WhatsNewGate } from "./components/whats-new";
 import { useSettings } from "./hooks/useSettings";
@@ -22,6 +24,8 @@ import {
   hasRequiredMacOSPermissions,
   unwrapCommandResult,
 } from "@/lib/permissions";
+import { createInputInitializationPlan } from "@/lib/accessibility";
+import type { OSType } from "@/lib/utils/keyboard";
 import { getLanguageDirection, initializeRTL } from "@/lib/utils/rtl";
 
 type OnboardingStep = "accessibility" | "model" | "done";
@@ -61,35 +65,56 @@ function App() {
     initializeRTL(i18n.language);
   }, [i18n.language]);
 
-  // Initialize shortcuts and only create Enigo when the selected features
-  // actually need synthetic input. On macOS, constructing Enigo without this
-  // guard would turn an optional feature into an implicit permission prompt.
+  // React owns a single post-onboarding initialization. Setting commands own
+  // subsequent runtime transitions, avoiding duplicate native initialization.
   useEffect(() => {
     if (onboardingStep === "done" && !hasCompletedPostOnboardingInit.current) {
       hasCompletedPostOnboardingInit.current = true;
 
       const initializeInput = async () => {
+        const currentPlatform = platform();
+        const osType: OSType =
+          currentPlatform === "macos" ||
+          currentPlatform === "windows" ||
+          currentPlatform === "linux"
+            ? currentPlatform
+            : "unknown";
+        const settingsResult = unwrapCommandResult(
+          await commands.getAppSettings(),
+          "Read input settings",
+        );
+        let accessibilityGranted = true;
+        if (osType === "macos") {
+          try {
+            accessibilityGranted = await checkAccessibilityPermission();
+          } catch (error) {
+            accessibilityGranted = false;
+            console.warn(
+              "Failed to check Accessibility; continuing with permission-free input:",
+              error,
+            );
+          }
+        }
+
+        if (osType === "macos") {
+          useAccessibilityStore
+            .getState()
+            .setPermissionGranted(accessibilityGranted);
+        }
+
+        const plan = createInputInitializationPlan({
+          osType,
+          pasteMethod: settingsResult.paste_method ?? "ctrl_v",
+          autoSubmit: settingsResult.auto_submit ?? false,
+          accessibilityGranted,
+        });
+
         unwrapCommandResult(
           await commands.initializeShortcuts(),
           "Initialize shortcuts",
         );
 
-        const currentPlatform = platform();
-        if (currentPlatform !== "macos") {
-          unwrapCommandResult(
-            await commands.initializeEnigo(),
-            "Initialize synthetic input",
-          );
-          return;
-        }
-
-        const accessibilityRequired =
-          await commands.macosAccessibilityRequired();
-        const accessibilityGranted = await checkAccessibilityPermission();
-        useAccessibilityStore
-          .getState()
-          .setPermissionGranted(accessibilityGranted);
-        if (accessibilityRequired && accessibilityGranted) {
+        if (plan.syntheticInput) {
           unwrapCommandResult(
             await commands.initializeEnigo(),
             "Initialize synthetic input",
@@ -258,30 +283,47 @@ function App() {
         setIsReturningUser(true);
 
         if (currentPlatform === "macos") {
-          try {
-            const [accessibilityRequired, hasMicrophone] = await Promise.all([
+          const [policyResult, microphoneResult, accessibilityResult] =
+            await Promise.allSettled([
               commands.macosAccessibilityRequired(),
               checkMicrophonePermission(),
+              checkAccessibilityPermission(),
             ]);
-            const hasAccessibility = await checkAccessibilityPermission();
-            useAccessibilityStore
-              .getState()
-              .setPermissionGranted(hasAccessibility);
+          const hasMicrophone =
+            microphoneResult.status === "fulfilled" && microphoneResult.value;
+          const hasAccessibility =
+            accessibilityResult.status === "fulfilled" &&
+            accessibilityResult.value;
+          const accessibilityRequired =
+            policyResult.status === "fulfilled" ? policyResult.value : true;
 
-            if (
-              !hasRequiredMacOSPermissions({
-                microphoneGranted: hasMicrophone,
-                accessibilityGranted: hasAccessibility,
-                accessibilityRequired,
-              })
-            ) {
-              await revealMainWindowForPermissions();
-              setOnboardingStep("accessibility");
-              return;
+          useAccessibilityStore
+            .getState()
+            .setPermissionGranted(hasAccessibility);
+
+          if (
+            !hasRequiredMacOSPermissions({
+              microphoneGranted: hasMicrophone,
+              accessibilityGranted: hasAccessibility,
+              accessibilityRequired,
+            })
+          ) {
+            await revealMainWindowForPermissions();
+            setOnboardingStep("accessibility");
+            return;
+          }
+
+          for (const result of [
+            policyResult,
+            microphoneResult,
+            accessibilityResult,
+          ]) {
+            if (result.status === "rejected") {
+              console.warn(
+                "Failed to check a macOS permission:",
+                result.reason,
+              );
             }
-          } catch (e) {
-            console.warn("Failed to check macOS permissions:", e);
-            // If we can't check, proceed to main app and let them fix it there
           }
         }
 
@@ -341,6 +383,8 @@ function App() {
             "bg-background border border-mid-gray/20 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 text-sm",
           title: "font-medium",
           description: "text-mid-gray",
+          actionButton:
+            "px-2 py-1 text-xs font-medium rounded-lg border bg-mid-gray/10 border-mid-gray/20 hover:bg-background-ui/30 hover:border-logo-primary cursor-pointer whitespace-nowrap",
         },
       }}
     />
@@ -367,7 +411,9 @@ function App() {
         dir={direction}
         className="h-screen flex flex-col select-none cursor-default"
       >
-        <WhatsNewGate />
+        <ErrorBoundary context="What's New">
+          <WhatsNewGate />
+        </ErrorBoundary>
         {/* Main content area that takes remaining space */}
         <div className="flex-1 flex overflow-hidden">
           <Sidebar
@@ -379,6 +425,7 @@ function App() {
             <div className="flex-1 overflow-y-auto">
               <div className="flex flex-col items-center p-4 gap-4">
                 <AccessibilityPermissions />
+                <SecureInputWarning />
                 {renderSettingsContent(currentSection)}
               </div>
             </div>

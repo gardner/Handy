@@ -176,8 +176,8 @@ pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
 pub struct ShortcutsInitialized;
 
 /// Initialize keyboard shortcuts.
-/// The Tauri shortcut backend works on macOS without Accessibility; HandyKeys
-/// is selected only by profiles that require it.
+/// Ordinary Tauri shortcuts work on macOS without Accessibility; HandyKeys and
+/// media-key shortcuts are selected only by profiles that require it.
 /// This is idempotent - calling it multiple times is safe.
 #[specta::specta]
 #[tauri::command]
