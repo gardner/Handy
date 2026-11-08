@@ -204,6 +204,8 @@
       "hint": "这些内容以后可以在“设置”中更改",
       "highFiveLabel": "击掌",
       "atLogin": "登录时启动 Handy",
+      "readAloud": "Read selected text aloud",
+      "readAloudDetail": "Select text in any app and press the Read Aloud shortcut to hear it. Downloads a 320 MB voice.",
       "finish": "完成",
       "panel": {
         "name": "Handy",
@@ -921,8 +923,8 @@
         "description": "How fast the voice reads. 1.0× is natural pace."
       },
       "alertSound": {
-        "label": "Alert When Nothing Is Selected",
-        "description": "Play a short tone when you press the shortcut without any text selected."
+        "label": "Alert Sound",
+        "description": "Play a short tone when the shortcut has nothing to read: no text is selected, or the voice isn't downloaded yet."
       },
       "preview": {
         "title": "Try It",

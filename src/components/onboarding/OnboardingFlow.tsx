@@ -153,11 +153,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     if (!preview) {
       await updateSetting("autostart_enabled", store.atLogin);
       await commands.completeOnboarding();
+      if (store.readAloud) startReadAloudDownload();
     }
     onComplete();
     // After Settings replaces the flow, so Welcome doesn't flash.
     if (!preview) clearOnboardingProgress();
   };
+
+  // In the background: progress shows on the Read Aloud settings page, and
+  // failures surface through the model store's download-failed listener.
+  const startReadAloudDownload = () =>
+    commands.getReadAloudStatus().then((status) => {
+      if (!status.voice_downloaded) void commands.downloadReadAloudVoice();
+    });
 
   const chooseModel = (id: string) => {
     startModel(id);

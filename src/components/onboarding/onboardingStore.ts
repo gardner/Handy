@@ -43,6 +43,8 @@ interface Persisted {
   returnTo: OnboardingStep | null;
   /** Start Handy at login: set on All set, saved when they finish. */
   atLogin: boolean;
+  /** Download the Read Aloud voice when they finish (set on All set). */
+  readAloud: boolean;
 }
 
 interface OnboardingState extends Persisted {
@@ -70,6 +72,7 @@ const fresh = (): Persisted => ({
   lessons: { hold: false, tap: false },
   returnTo: null,
   atLogin: true,
+  readAloud: true,
 });
 
 const isStringList = (v: unknown): v is string[] =>
@@ -104,6 +107,7 @@ const load = (): Persisted => {
         (v) => v === null || STEP_ORDER.includes(v as OnboardingStep),
       ),
       atLogin: pick("atLogin", isBool),
+      readAloud: pick("readAloud", isBool),
       lessons: pick(
         "lessons",
         (v) =>
@@ -131,6 +135,7 @@ const save = (state: OnboardingState) => {
     lessons: state.lessons,
     returnTo: state.returnTo,
     atLogin: state.atLogin,
+    readAloud: state.readAloud,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));

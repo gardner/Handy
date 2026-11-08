@@ -204,6 +204,8 @@
       "hint": "यी कुरा पछि सेटिङमा परिवर्तन गर्न सकिन्छ",
       "highFiveLabel": "हाई फाइभ",
       "atLogin": "लग इन गर्दा Handy सुरु गर्नुहोस्",
+      "readAloud": "Read selected text aloud",
+      "readAloudDetail": "Select text in any app and press the Read Aloud shortcut to hear it. Downloads a 320 MB voice.",
       "finish": "सम्पन्न",
       "panel": {
         "name": "Handy",
@@ -921,8 +923,8 @@
         "description": "How fast the voice reads. 1.0× is natural pace."
       },
       "alertSound": {
-        "label": "Alert When Nothing Is Selected",
-        "description": "Play a short tone when you press the shortcut without any text selected."
+        "label": "Alert Sound",
+        "description": "Play a short tone when the shortcut has nothing to read: no text is selected, or the voice isn't downloaded yet."
       },
       "preview": {
         "title": "Try It",

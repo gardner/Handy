@@ -186,7 +186,7 @@ export const TryIt: React.FC<TryItProps> = ({
   const { t, i18n } = useTranslation();
   const e = useTryEngine({ os });
   const anyDone = e.lessons.hold || e.lessons.tap;
-  const { languages, atLogin, set } = useOnboardingStore();
+  const { languages, atLogin, readAloud, set } = useOnboardingStore();
   const { refreshAudioDevices } = useSettings();
 
   // The mic list isn't loaded until onboarding ends; load it for the picker.
@@ -706,6 +706,8 @@ export const TryIt: React.FC<TryItProps> = ({
               capture={e.capture}
               atLogin={atLogin}
               onAtLogin={(on) => set({ atLogin: on })}
+              readAloud={readAloud}
+              onReadAloud={(on) => set({ readAloud: on })}
               onChangeLanguages={() => onEdit("welcome")}
               onChangeModel={() => onEdit("model")}
               tailAt={tail}

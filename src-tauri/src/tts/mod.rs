@@ -24,7 +24,7 @@ use std::num::NonZero;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub struct TtsManager {
     app: AppHandle,
@@ -61,6 +61,16 @@ impl TtsManager {
         }
         let worker = self.worker();
         std::thread::spawn(move || {
+            if worker
+                .app
+                .state::<Arc<ModelManager>>()
+                .tts_model_paths()
+                .is_none()
+            {
+                info!("Read aloud: voice not downloaded");
+                worker.voice_missing();
+                return;
+            }
             let Some(text) = selection::selected_text(&worker.app) else {
                 info!("Read aloud: nothing selected");
                 notices::raise_without_overlay(
@@ -72,7 +82,7 @@ impl TtsManager {
                 );
                 // The notice only shows in Handy's window; the user is
                 // looking at another app, so tell them by sound too.
-                alert::play_nothing_selected(&worker.app);
+                alert::play(&worker.app);
                 return;
             };
             worker.speak(text);
@@ -147,6 +157,20 @@ struct Worker {
 }
 
 impl Worker {
+    /// The shortcut was pressed before the voice was downloaded: say so and
+    /// open the Read Aloud page, where the Download button is.
+    fn voice_missing(&self) {
+        notices::raise_without_overlay(
+            &self.app,
+            Notice::new(NoticeCode::ReadAloudVoiceMissing, NoticeSource::ReadAloud),
+        );
+        crate::show_main_window(&self.app);
+        if let Err(e) = self.app.emit("show-settings-section", "readAloud") {
+            error!("Read aloud: couldn't open the Read Aloud page: {e}");
+        }
+        alert::play(&self.app);
+    }
+
     /// Load Kokoro into `engine`. `Ok(false)` if the voice isn't downloaded.
     fn load_engine(&self, engine: &mut Option<Kokoro>) -> anyhow::Result<bool> {
         let Some((model, voice)) = self.app.state::<Arc<ModelManager>>().tts_model_paths() else {

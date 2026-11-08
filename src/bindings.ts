@@ -1155,7 +1155,8 @@ hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: nu
  */
 read_aloud_speed?: number; 
 /**
- * Play a short tone when the Read Aloud shortcut finds no selected text.
+ * Play a short tone when the Read Aloud shortcut has nothing to read (no
+ * selection, or no voice yet).
  */
 read_aloud_alert_sound?: boolean; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; show_whats_new_on_update?: boolean; 
 /**

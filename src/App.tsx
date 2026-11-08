@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
+import { listen } from "@tauri-apps/api/event";
 import {
   checkAccessibilityPermission,
   checkMicrophonePermission,
@@ -123,6 +124,18 @@ function App() {
       refreshOutputDevices();
     }
   }, [onboardingStep, refreshAudioDevices, refreshOutputDevices]);
+
+  // The backend opens a page itself, e.g. Read Aloud when its shortcut is
+  // pressed before the voice is downloaded.
+  useEffect(() => {
+    const unlisten = listen<string>("show-settings-section", (event) => {
+      if (event.payload in SECTIONS_CONFIG)
+        setCurrentSection(event.payload as SidebarSection);
+    });
+    return () => {
+      unlisten.then((stop) => stop());
+    };
+  }, []);
 
   // Handle keyboard shortcuts for debug mode toggle
   useEffect(() => {

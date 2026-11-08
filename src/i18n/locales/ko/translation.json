@@ -204,6 +204,8 @@
       "hint": "나중에 설정에서 바꿀 수 있습니다",
       "highFiveLabel": "하이파이브",
       "atLogin": "로그인할 때 Handy 시작",
+      "readAloud": "Read selected text aloud",
+      "readAloudDetail": "Select text in any app and press the Read Aloud shortcut to hear it. Downloads a 320 MB voice.",
       "finish": "완료",
       "panel": {
         "name": "Handy",
@@ -921,8 +923,8 @@
         "description": "How fast the voice reads. 1.0× is natural pace."
       },
       "alertSound": {
-        "label": "Alert When Nothing Is Selected",
-        "description": "Play a short tone when you press the shortcut without any text selected."
+        "label": "Alert Sound",
+        "description": "Play a short tone when the shortcut has nothing to read: no text is selected, or the voice isn't downloaded yet."
       },
       "preview": {
         "title": "Try It",

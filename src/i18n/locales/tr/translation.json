@@ -204,6 +204,8 @@
       "hint": "Bunları daha sonra Ayarlar'dan değiştirebilirsiniz",
       "highFiveLabel": "Çak bir beşlik",
       "atLogin": "Oturum açtığımda Handy'yi başlat",
+      "readAloud": "Read selected text aloud",
+      "readAloudDetail": "Select text in any app and press the Read Aloud shortcut to hear it. Downloads a 320 MB voice.",
       "finish": "Bitti",
       "panel": {
         "name": "Handy",
@@ -921,8 +923,8 @@
         "description": "How fast the voice reads. 1.0× is natural pace."
       },
       "alertSound": {
-        "label": "Alert When Nothing Is Selected",
-        "description": "Play a short tone when you press the shortcut without any text selected."
+        "label": "Alert Sound",
+        "description": "Play a short tone when the shortcut has nothing to read: no text is selected, or the voice isn't downloaded yet."
       },
       "preview": {
         "title": "Try It",

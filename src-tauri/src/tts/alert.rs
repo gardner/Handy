@@ -1,5 +1,5 @@
-//! The tone played when the Read Aloud shortcut finds nothing to read, so a
-//! press is never silent. Synthesized rather than shipped as a file: two soft
+//! The tone played when the Read Aloud shortcut can't read anything (nothing
+//! selected, or no voice yet), so a press is never silent. Synthesized rather than shipped as a file: two soft
 //! falling notes, distinct from the dictation start/stop sounds.
 
 use crate::settings;
@@ -12,7 +12,7 @@ use tauri::AppHandle;
 const RATE: u32 = 44_100;
 
 /// Play the alert and return once it has finished (call off the UI thread).
-pub fn play_nothing_selected(app: &AppHandle) {
+pub fn play(app: &AppHandle) {
     let settings = settings::get_settings(app);
     if !settings.read_aloud_alert_sound {
         return;

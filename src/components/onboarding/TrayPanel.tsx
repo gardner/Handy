@@ -29,6 +29,9 @@ interface TrayPanelProps {
   };
   atLogin: boolean;
   onAtLogin: (on: boolean) => void;
+  /** Download the Read Aloud voice when they finish. */
+  readAloud: boolean;
+  onReadAloud: (on: boolean) => void;
   onChangeLanguages: () => void;
   onChangeModel: () => void;
   /** Where the tail meets the icon, from the panel's inline-end edge. */
@@ -70,6 +73,8 @@ export const TrayPanel: React.FC<TrayPanelProps> = ({
   capture,
   atLogin,
   onAtLogin,
+  readAloud,
+  onReadAloud,
   onChangeLanguages,
   onChangeModel,
   tailAt,
@@ -195,6 +200,21 @@ export const TrayPanel: React.FC<TrayPanelProps> = ({
           checked={atLogin}
           onChange={onAtLogin}
           ariaLabelledBy="try-panel-login"
+        />
+      </div>
+      <div className="try-panel-row is-switch">
+        <span
+          id="try-panel-read-aloud"
+          className="try-panel-label"
+          title={t("onboarding.done.readAloudDetail")}
+          onClick={() => onReadAloud(!readAloud)}
+        >
+          {t("onboarding.done.readAloud")}
+        </span>
+        <Switch
+          checked={readAloud}
+          onChange={onReadAloud}
+          ariaLabelledBy="try-panel-read-aloud"
         />
       </div>
     </div>
