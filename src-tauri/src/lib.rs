@@ -30,6 +30,7 @@ mod transcription_coordinator;
 mod transcription_hook;
 mod tray;
 mod tray_i18n;
+mod tts;
 mod utils;
 pub mod webkit_renderer;
 
@@ -221,6 +222,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(history_manager.clone());
     app_handle.manage(tray::TrayState::new());
     app_handle.manage(TranscriptionJobManager::new(app_handle));
+    app_handle.manage(tts::TtsManager::new(app_handle));
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -688,6 +690,11 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_hold_threshold_ms_setting,
             shortcut::change_audio_feedback_setting,
             shortcut::change_audio_feedback_volume_setting,
+            commands::tts::get_read_aloud_status,
+            commands::tts::download_read_aloud_voice,
+            commands::tts::read_aloud_text,
+            commands::tts::stop_read_aloud,
+            commands::tts::change_read_aloud_speed_setting,
             shortcut::change_sound_theme_setting,
             shortcut::change_theme_setting,
             shortcut::change_start_hidden_setting,

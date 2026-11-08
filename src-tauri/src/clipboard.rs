@@ -21,7 +21,7 @@ static PASTE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Runs `f` with the shared Enigo on the main thread (macOS TIS APIs require it)
 /// and waits for the result. Runs inline if already on the main thread, so no deadlock.
-fn with_enigo<T: Send + 'static>(
+pub(crate) fn with_enigo<T: Send + 'static>(
     app_handle: &AppHandle,
     f: impl FnOnce(&mut Enigo) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {

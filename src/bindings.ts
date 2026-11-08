@@ -53,6 +53,38 @@ async changeAudioFeedbackVolumeSetting(volume: number) : Promise<Result<null, st
     else return { status: "error", error: e  as any };
 }
 },
+async getReadAloudStatus() : Promise<ReadAloudStatus> {
+    return await TAURI_INVOKE("get_read_aloud_status");
+},
+/**
+ * Download the read-aloud voice. Progress arrives as `model-download-progress`
+ * events for `download_id`; cancel with `cancel_download(download_id)`.
+ */
+async downloadReadAloudVoice() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("download_read_aloud_voice") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Speak `text` (used by the settings page to preview the voice and speed).
+ */
+async readAloudText(text: string) : Promise<void> {
+    await TAURI_INVOKE("read_aloud_text", { text });
+},
+async stopReadAloud() : Promise<void> {
+    await TAURI_INVOKE("stop_read_aloud");
+},
+async changeReadAloudSpeedSetting(speed: number) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_read_aloud_speed_setting", { speed }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeSoundThemeSetting(theme: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_sound_theme_setting", { theme }) };
@@ -1109,7 +1141,11 @@ shortcut_activation?: ShortcutActivation;
  * Hold-or-toggle only: a press held at least this long is push-to-talk,
  * anything shorter is a tap that locks recording on.
  */
-hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; show_whats_new_on_update?: boolean; 
+hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: number; 
+/**
+ * Read-aloud speaking rate; 1.0 is Kokoro's natural pace.
+ */
+read_aloud_speed?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; show_whats_new_on_update?: boolean; 
 /**
  * The app version whose What's New the user has already seen. Fresh installs
  * default to the current version (nothing is "new" to them). Existing users
@@ -1337,7 +1373,7 @@ detail: string | null }
 /**
  * The frontend maps each code to its text in `src/lib/notices.ts`.
  */
-export type NoticeCode = "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed"
+export type NoticeCode = "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed" | "ReadAloudVoiceMissing" | "ReadAloudFailed" | "ReadAloudNothingSelected"
 export type NoticeLevel = 
 /**
  * Nothing came out, or Handy can't do its job.
@@ -1352,7 +1388,7 @@ export type NoticeLevel =
  * overlay: a file job finishes while the user is doing something else, and
  * `Model` is a switch the user made in Settings or the tray.
  */
-export type NoticeSource = "dictation" | "file" | "model"
+export type NoticeSource = "dictation" | "file" | "model" | "readaloud"
 export type NoticesChanged = { 
 /**
  * Every active notice, newest first.
@@ -1390,6 +1426,15 @@ export type PostProcessProvider = { id: string; label: string; base_url: string;
 /**
  * Recording phase events for windows that follow along (onboarding's Try it).
  */
+export type ReadAloudStatus = { 
+/**
+ * The Kokoro model and af_heart voice are on disk.
+ */
+voice_downloaded: boolean; speaking: boolean; 
+/**
+ * Progress/cancel id for the voice download.
+ */
+download_id: string }
 export type RecordingPhase = 
 /**
  * Recording began.

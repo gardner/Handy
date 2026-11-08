@@ -348,6 +348,10 @@
           "transcribe_with_post_process": {
             "name": "Nachbearbeitungs-Tastenkürzel",
             "description": "Optional: Ein dediziertes Tastenkürzel, das immer die KI-Nachbearbeitung auf deine Transkription anwendet."
+          },
+          "read_aloud": {
+            "name": "Read Aloud Shortcut",
+            "description": "Reads the selected text aloud. Press again to stop."
           }
         },
         "errors": {
@@ -898,6 +902,29 @@
           "details": "Handy verwendet ggml für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
         }
       }
+    },
+    "readAloud": {
+      "title": "Read Aloud",
+      "voice": {
+        "title": "Voice",
+        "description": "Kokoro af_heart, an American English voice that runs entirely on this computer (about 320 MB).",
+        "download": "Download",
+        "downloading": "Downloading… {{percent}}%",
+        "cancel": "Cancel",
+        "ready": "Ready",
+        "failed": "Download failed: {{error}}"
+      },
+      "speed": {
+        "title": "Speaking Speed",
+        "description": "How fast the voice reads. 1.0× is natural pace."
+      },
+      "preview": {
+        "title": "Try It",
+        "description": "Hear the voice at the current speed.",
+        "play": "Play Sample",
+        "stop": "Stop",
+        "sample": "Hi! Select any text, press the Read Aloud shortcut, and I'll read it to you. Press the shortcut again whenever you want me to stop."
+      }
     }
   },
   "footer": {
@@ -951,7 +978,12 @@
     "filePostProcessFailedTitle": "Ohne Nachbearbeitung transkribiert",
     "filePostProcessFailed": "Die Nachbearbeitung wurde nicht abgeschlossen, daher wurde das Transkript unverändert gespeichert.",
     "fileTranscriptionFailedTitle": "Dateitranskription fehlgeschlagen",
-    "transcriptionFailedTitle": "Transkription fehlgeschlagen"
+    "transcriptionFailedTitle": "Transkription fehlgeschlagen",
+    "readAloudVoiceMissingTitle": "Read-Aloud Voice Not Downloaded",
+    "readAloudVoiceMissing": "Download the voice in Settings → Read Aloud, then try again.",
+    "readAloudFailedTitle": "Couldn't Read Aloud",
+    "readAloudNothingSelectedTitle": "No Text Selected",
+    "readAloudNothingSelected": "Select some text first, then press the Read Aloud shortcut."
   },
   "notices": {
     "errorOne": "{{n}} Fehler",

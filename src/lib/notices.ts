@@ -46,6 +46,17 @@ const NOTICE_DISPLAY: Record<NoticeCode, NoticeDisplay> = {
     title: "errors.filePostProcessFailedTitle",
     explanation: (t) => t("errors.filePostProcessFailed"),
   },
+  ReadAloudVoiceMissing: {
+    title: "errors.readAloudVoiceMissingTitle",
+    explanation: (t) => t("errors.readAloudVoiceMissing"),
+  },
+  ReadAloudFailed: {
+    title: "errors.readAloudFailedTitle",
+  },
+  ReadAloudNothingSelected: {
+    title: "errors.readAloudNothingSelectedTitle",
+    explanation: (t) => t("errors.readAloudNothingSelected"),
+  },
 };
 
 export const noticeDisplay = (code: NoticeCode) => NOTICE_DISPLAY[code];

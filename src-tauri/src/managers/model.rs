@@ -527,6 +527,8 @@ fn local_caps(probe: &CapabilityProbe) -> LocalCaps {
 /// Download id under which a standalone language detector download reports
 /// progress, completion and cancellation, like a model's.
 pub const LANGUAGE_DETECTOR_ID: &str = "language-detector";
+/// Download/progress id for the read-aloud voice (Kokoro model + af_heart).
+pub const TTS_MODEL_ID: &str = "read-aloud-voice";
 
 /// Where one file's download progress is reported: under `model_id`, its bytes
 /// counted from `offset`, out of `total` (default: `offset` + the file's own
@@ -875,6 +877,7 @@ pub struct ModelManager {
     /// One language detector transfer at a time, however many downloads
     /// want it.
     detector_download: tokio::sync::Mutex<()>,
+    tts_download: tokio::sync::Mutex<()>,
 }
 
 impl ModelManager {
@@ -1079,6 +1082,7 @@ impl ModelManager {
             cancel_flags: Arc::new(Mutex::new(HashMap::new())),
             is_rescanning: Arc::new(AtomicBool::new(false)),
             detector_download: tokio::sync::Mutex::new(()),
+            tts_download: tokio::sync::Mutex::new(()),
         };
 
         // Migrate any bundled models to user directory
@@ -1953,6 +1957,78 @@ impl ModelManager {
             let _ = self
                 .app_handle
                 .emit("model-download-complete", LANGUAGE_DETECTOR_ID);
+        }
+        Ok(())
+    }
+
+    /// The read-aloud model and voice files, when both are fully downloaded.
+    pub fn tts_model_paths(&self) -> Option<(PathBuf, PathBuf)> {
+        use crate::tts::kokoro::{MODEL_FILE, REPO_ID, REVISION, VOICE_FILE};
+        let model = hf_cached_path(REPO_ID, REVISION, MODEL_FILE)?;
+        let voice = hf_cached_path(REPO_ID, REVISION, VOICE_FILE)?;
+        Some((model, voice))
+    }
+
+    /// Download the read-aloud voice (Kokoro model + af_heart), reporting
+    /// progress and accepting cancellation under [`TTS_MODEL_ID`].
+    pub async fn download_tts_model(&self) -> Result<()> {
+        use crate::tts::kokoro::{
+            MODEL_FILE, MODEL_SHA256, MODEL_SIZE, REPO_ID, REVISION, VOICE_FILE, VOICE_SHA256,
+            VOICE_SIZE,
+        };
+        let cancel_token = CancellationToken::new();
+        self.cancel_flags
+            .lock()
+            .unwrap()
+            .insert(TTS_MODEL_ID.to_string(), cancel_token.clone());
+
+        let fetched = async {
+            let _single = tokio::select! {
+                guard = self.tts_download.lock() => guard,
+                _ = cancel_token.cancelled() => return Ok(false),
+            };
+            let total = Some(VOICE_SIZE + MODEL_SIZE);
+            // Small file first so a broken connection shows up quickly.
+            let files = [
+                (VOICE_FILE, VOICE_SHA256, 0),
+                (MODEL_FILE, MODEL_SHA256, VOICE_SIZE),
+            ];
+            for (filename, sha256, offset) in files {
+                if hf_cached_path(REPO_ID, REVISION, filename).is_some() {
+                    continue;
+                }
+                let transfer = FileTransfer {
+                    label: "the read-aloud voice",
+                    repo_id: REPO_ID,
+                    revision: REVISION,
+                    filename,
+                    mirrors: Vec::new(),
+                    progress: ProgressTarget {
+                        model_id: TTS_MODEL_ID.to_string(),
+                        offset,
+                        total,
+                    },
+                };
+                if !self.fetch_hf_file(&transfer, &cancel_token).await? {
+                    return Ok(false);
+                }
+                let path = hf_cached_path(REPO_ID, REVISION, filename)
+                    .ok_or_else(|| anyhow::anyhow!("{filename} missing after download"))?;
+                let check = path.clone();
+                tokio::task::spawn_blocking(move || {
+                    Self::verify_sha256(&check, Some(sha256), TTS_MODEL_ID)
+                })
+                .await??;
+            }
+            Ok::<bool, anyhow::Error>(true)
+        }
+        .await;
+
+        self.cancel_flags.lock().unwrap().remove(TTS_MODEL_ID);
+        if fetched? {
+            let _ = self
+                .app_handle
+                .emit("model-download-complete", TTS_MODEL_ID);
         }
         Ok(())
     }

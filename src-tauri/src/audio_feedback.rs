@@ -95,12 +95,19 @@ fn play_sound_at_path(app: &AppHandle, path: &Path) -> Result<(), Box<dyn std::e
     play_audio_file(path, selected_device, volume)
 }
 
-fn play_audio_file(
-    path: &std::path::Path,
+/// Open the output device the user picked in settings (or the default).
+/// The returned stream plays only while it's kept alive.
+pub fn open_output_stream(
+    app: &AppHandle,
+) -> Result<rodio::MixerDeviceSink, Box<dyn std::error::Error + Send + Sync>> {
+    let selected_device = settings::get_settings(app).selected_output_device;
+    Ok(output_sink_builder(selected_device)?.open_stream()?)
+}
+
+fn output_sink_builder(
     selected_device: Option<String>,
-    volume: f32,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let sink_builder = if let Some(device_name) = selected_device {
+) -> Result<DeviceSinkBuilder, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(if let Some(device_name) = selected_device {
         if device_name == "Default" {
             debug!("Using default device");
             DeviceSinkBuilder::from_default_device()?
@@ -121,7 +128,16 @@ fn play_audio_file(
     } else {
         debug!("Using default device");
         DeviceSinkBuilder::from_default_device()?
-    };
+    })
+}
+
+fn play_audio_file(
+    path: &std::path::Path,
+    selected_device: Option<String>,
+    volume: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sink_builder =
+        output_sink_builder(selected_device).map_err(|e| e as Box<dyn std::error::Error>)?;
 
     let device_sink = sink_builder.open_stream()?;
     let mixer = device_sink.mixer();

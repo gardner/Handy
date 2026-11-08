@@ -348,6 +348,10 @@
           "transcribe_with_post_process": {
             "name": "पोस्ट-प्रोसेसिंग हॉटकी",
             "description": "वैकल्पिक: एक अलग हॉटकी जो आपके ट्रांसक्रिप्शन पर हमेशा AI पोस्ट-प्रोसेसिंग लागू करती है."
+          },
+          "read_aloud": {
+            "name": "Read Aloud Shortcut",
+            "description": "Reads the selected text aloud. Press again to stop."
           }
         },
         "errors": {
@@ -898,6 +902,29 @@
           "details": "Handy का लोकल स्पीच-टू-टेक्स्ट transcribe.cpp और ggml पर आधारित है. Georgi Gerganov और योगदान देने वालों के शानदार काम के लिए धन्यवाद."
         }
       }
+    },
+    "readAloud": {
+      "title": "Read Aloud",
+      "voice": {
+        "title": "Voice",
+        "description": "Kokoro af_heart, an American English voice that runs entirely on this computer (about 320 MB).",
+        "download": "Download",
+        "downloading": "Downloading… {{percent}}%",
+        "cancel": "Cancel",
+        "ready": "Ready",
+        "failed": "Download failed: {{error}}"
+      },
+      "speed": {
+        "title": "Speaking Speed",
+        "description": "How fast the voice reads. 1.0× is natural pace."
+      },
+      "preview": {
+        "title": "Try It",
+        "description": "Hear the voice at the current speed.",
+        "play": "Play Sample",
+        "stop": "Stop",
+        "sample": "Hi! Select any text, press the Read Aloud shortcut, and I'll read it to you. Press the shortcut again whenever you want me to stop."
+      }
     }
   },
   "footer": {
@@ -951,7 +978,12 @@
     "filePostProcessFailedTitle": "पोस्ट प्रोसेस के बिना ट्रांसक्राइब किया गया",
     "filePostProcessFailed": "पोस्ट प्रोसेस पूरा नहीं हुआ, इसलिए ट्रांसक्रिप्ट जैसा था वैसा ही सहेजा गया।",
     "fileTranscriptionFailedTitle": "फ़ाइल का ट्रांसक्रिप्शन नहीं हो सका",
-    "transcriptionFailedTitle": "ट्रांसक्रिप्शन नहीं हो सका"
+    "transcriptionFailedTitle": "ट्रांसक्रिप्शन नहीं हो सका",
+    "readAloudVoiceMissingTitle": "Read-Aloud Voice Not Downloaded",
+    "readAloudVoiceMissing": "Download the voice in Settings → Read Aloud, then try again.",
+    "readAloudFailedTitle": "Couldn't Read Aloud",
+    "readAloudNothingSelectedTitle": "No Text Selected",
+    "readAloudNothingSelected": "Select some text first, then press the Read Aloud shortcut."
   },
   "notices": {
     "errorOne": "{{n}} त्रुटि",

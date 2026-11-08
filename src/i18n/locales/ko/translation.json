@@ -348,6 +348,10 @@
           "transcribe_with_post_process": {
             "name": "후처리 단축키",
             "description": "선택 사항: 항상 AI 후처리를 적용하는 전용 단축키입니다."
+          },
+          "read_aloud": {
+            "name": "Read Aloud Shortcut",
+            "description": "Reads the selected text aloud. Press again to stop."
           }
         },
         "errors": {
@@ -898,6 +902,29 @@
           "details": "Handy는 빠르고 로컬 음성-텍스트 처리를 위해 ggml를 사용합니다. Georgi Gerganov와 기여자들의 놀라운 작업에 감사드립니다."
         }
       }
+    },
+    "readAloud": {
+      "title": "Read Aloud",
+      "voice": {
+        "title": "Voice",
+        "description": "Kokoro af_heart, an American English voice that runs entirely on this computer (about 320 MB).",
+        "download": "Download",
+        "downloading": "Downloading… {{percent}}%",
+        "cancel": "Cancel",
+        "ready": "Ready",
+        "failed": "Download failed: {{error}}"
+      },
+      "speed": {
+        "title": "Speaking Speed",
+        "description": "How fast the voice reads. 1.0× is natural pace."
+      },
+      "preview": {
+        "title": "Try It",
+        "description": "Hear the voice at the current speed.",
+        "play": "Play Sample",
+        "stop": "Stop",
+        "sample": "Hi! Select any text, press the Read Aloud shortcut, and I'll read it to you. Press the shortcut again whenever you want me to stop."
+      }
     }
   },
   "footer": {
@@ -951,7 +978,12 @@
     "filePostProcessFailedTitle": "후처리 없이 받아씀",
     "filePostProcessFailed": "후처리가 완료되지 않아 받아쓰기 결과를 그대로 저장했습니다.",
     "fileTranscriptionFailedTitle": "파일 음성 인식 실패",
-    "transcriptionFailedTitle": "음성 인식 실패"
+    "transcriptionFailedTitle": "음성 인식 실패",
+    "readAloudVoiceMissingTitle": "Read-Aloud Voice Not Downloaded",
+    "readAloudVoiceMissing": "Download the voice in Settings → Read Aloud, then try again.",
+    "readAloudFailedTitle": "Couldn't Read Aloud",
+    "readAloudNothingSelectedTitle": "No Text Selected",
+    "readAloudNothingSelected": "Select some text first, then press the Read Aloud shortcut."
   },
   "notices": {
     "errorOne": "오류 {{n}}개",

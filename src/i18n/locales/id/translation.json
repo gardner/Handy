@@ -348,6 +348,10 @@
           "transcribe_with_post_process": {
             "name": "Pintasan Pascaproses",
             "description": "Opsional: pintasan khusus yang selalu menerapkan pascaproses AI pada transkripsi Anda."
+          },
+          "read_aloud": {
+            "name": "Read Aloud Shortcut",
+            "description": "Reads the selected text aloud. Press again to stop."
           }
         },
         "errors": {
@@ -898,6 +902,29 @@
           "details": "Fitur ucapan-ke-teks lokal Handy dibangun menggunakan transcribe.cpp dan ggml. Terima kasih kepada Georgi Gerganov dan para kontributor atas karya luar biasa mereka."
         }
       }
+    },
+    "readAloud": {
+      "title": "Read Aloud",
+      "voice": {
+        "title": "Voice",
+        "description": "Kokoro af_heart, an American English voice that runs entirely on this computer (about 320 MB).",
+        "download": "Download",
+        "downloading": "Downloading… {{percent}}%",
+        "cancel": "Cancel",
+        "ready": "Ready",
+        "failed": "Download failed: {{error}}"
+      },
+      "speed": {
+        "title": "Speaking Speed",
+        "description": "How fast the voice reads. 1.0× is natural pace."
+      },
+      "preview": {
+        "title": "Try It",
+        "description": "Hear the voice at the current speed.",
+        "play": "Play Sample",
+        "stop": "Stop",
+        "sample": "Hi! Select any text, press the Read Aloud shortcut, and I'll read it to you. Press the shortcut again whenever you want me to stop."
+      }
     }
   },
   "footer": {
@@ -951,7 +978,12 @@
     "filePostProcessFailedTitle": "Ditranskripsi Tanpa Pascaproses",
     "filePostProcessFailed": "Pascaproses tidak selesai, jadi transkrip disimpan apa adanya.",
     "fileTranscriptionFailedTitle": "Transkripsi File Gagal",
-    "transcriptionFailedTitle": "Transkripsi Gagal"
+    "transcriptionFailedTitle": "Transkripsi Gagal",
+    "readAloudVoiceMissingTitle": "Read-Aloud Voice Not Downloaded",
+    "readAloudVoiceMissing": "Download the voice in Settings → Read Aloud, then try again.",
+    "readAloudFailedTitle": "Couldn't Read Aloud",
+    "readAloudNothingSelectedTitle": "No Text Selected",
+    "readAloudNothingSelected": "Select some text first, then press the Read Aloud shortcut."
   },
   "notices": {
     "errorOne": "{{n}} kesalahan",

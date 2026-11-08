@@ -105,7 +105,11 @@ impl ModelManager {
     /// On mismatch or read error the partial file is deleted and an error is returned,
     /// so the next download attempt always starts from a clean state.
     /// When `expected_sha256` is `None` (custom user models) verification is skipped.
-    fn verify_sha256(path: &Path, expected_sha256: Option<&str>, model_id: &str) -> Result<()> {
+    pub(super) fn verify_sha256(
+        path: &Path,
+        expected_sha256: Option<&str>,
+        model_id: &str,
+    ) -> Result<()> {
         let Some(expected) = expected_sha256 else {
             return Ok(());
         };

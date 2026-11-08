@@ -416,6 +416,9 @@ pub struct AppSettings {
     pub audio_feedback: bool,
     #[serde(default = "default_audio_feedback_volume")]
     pub audio_feedback_volume: f32,
+    /// Read-aloud speaking rate; 1.0 is Kokoro's natural pace.
+    #[serde(default = "default_read_aloud_speed")]
+    pub read_aloud_speed: f32,
     #[serde(default = "default_sound_theme")]
     pub sound_theme: SoundTheme,
     #[serde(default = "default_start_hidden")]
@@ -690,6 +693,10 @@ fn default_recording_retention_period() -> RecordingRetentionPeriod {
 }
 
 fn default_audio_feedback_volume() -> f32 {
+    1.0
+}
+
+fn default_read_aloud_speed() -> f32 {
     1.0
 }
 
@@ -988,6 +995,21 @@ pub fn get_default_settings() -> AppSettings {
             current_binding: default_post_process_shortcut.to_string(),
         },
     );
+    #[cfg(target_os = "macos")]
+    let default_read_aloud_shortcut = "option+shift+r";
+    #[cfg(not(target_os = "macos"))]
+    let default_read_aloud_shortcut = "ctrl+alt+r";
+
+    bindings.insert(
+        "read_aloud".to_string(),
+        ShortcutBinding {
+            id: "read_aloud".to_string(),
+            name: "Read Aloud".to_string(),
+            description: "Reads the selected text aloud. Press again to stop.".to_string(),
+            default_binding: default_read_aloud_shortcut.to_string(),
+            current_binding: default_read_aloud_shortcut.to_string(),
+        },
+    );
     bindings.insert(
         "cancel".to_string(),
         ShortcutBinding {
@@ -1006,6 +1028,7 @@ pub fn get_default_settings() -> AppSettings {
         hold_threshold_ms: default_hold_threshold_ms(),
         audio_feedback: false,
         audio_feedback_volume: default_audio_feedback_volume(),
+        read_aloud_speed: default_read_aloud_speed(),
         sound_theme: default_sound_theme(),
         start_hidden: default_start_hidden(),
         autostart_enabled: default_autostart_enabled(),

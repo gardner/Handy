@@ -1020,6 +1020,19 @@ impl ShortcutAction for CancelAction {
     }
 }
 
+// Read Aloud Action: press to read the selection, press again to stop.
+struct ReadAloudAction;
+
+impl ShortcutAction for ReadAloudAction {
+    fn start(&self, app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        if let Some(tts) = app.try_state::<crate::tts::TtsManager>() {
+            tts.toggle_read_selection();
+        }
+    }
+
+    fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {}
+}
+
 // Test Action
 struct TestAction;
 
@@ -1059,6 +1072,10 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     map.insert(
         "cancel".to_string(),
         Arc::new(CancelAction) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "read_aloud".to_string(),
+        Arc::new(ReadAloudAction) as Arc<dyn ShortcutAction>,
     );
     map.insert(
         "test".to_string(),
