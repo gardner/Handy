@@ -5,8 +5,10 @@
 //! player as soon as it's ready, so speech starts after the first sentence
 //! rather than after the whole selection.
 
+mod cmudict;
 mod fallback;
 pub mod kokoro;
+mod rules;
 pub mod selection;
 pub mod text;
 

@@ -80,6 +80,7 @@ sha2 = "0.10"
 # its GPL espeak-ng fallback.
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-rustls", "copy-dylibs", "api-24"] }
 misaki-rs = { version = "0.8.0", default-features = false }
+flate2 = "1.1"
 libc = "0.2"
 # Every model runs through transcribe-cpp (GGUF/ggml, native backends).
 # Per-platform backend features are added in the target tables (Cargo unifies

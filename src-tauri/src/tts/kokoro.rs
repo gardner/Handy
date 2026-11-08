@@ -190,7 +190,7 @@ mod tests {
         for (i, sentence) in sentences.iter().enumerate() {
             for chunk in kokoro.tokenize(sentence).unwrap() {
                 audio.extend(kokoro.synthesize(&chunk, 1.0).unwrap());
-                if i == 0 && audio.len() > 0 {
+                if i == 0 && !audio.is_empty() {
                     eprintln!("first audio after {:?}", synth.elapsed());
                 }
             }

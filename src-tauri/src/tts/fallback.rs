@@ -3,12 +3,14 @@
 //! would be read as just "runs".
 //!
 //! Strategy, in order:
-//! 1. Split the word into dictionary words ("Zustand" → "zus" + "tand" style
-//!    guesses work well for compounds like "hotkeys" or "dashboard").
-//! 2. Spell it out letter by letter ("qzxwv" → "Q Z X W V").
+//! 1. Short all-caps words are acronyms: spell them ("NATO" aside, "AWS").
+//! 2. The CMU Pronouncing Dictionary, which has many names ("Gardner").
+//! 3. Split into dictionary words, for compounds ("hotkeys", "dashboarding").
+//! 4. Letter-to-sound rules, for anything pronounceable ("Kubernetes").
+//! 5. Spell it out letter by letter ("qzxwv" → "Q Z X W V").
 //!
-//! This is deliberately simple and dependency-free (MIT, no espeak-ng). A
-//! neural G2P could replace it later behind the same `Fallback` trait.
+//! Everything here is MIT/BSD; no espeak-ng. A neural G2P could replace
+//! steps 3–4 later behind the same `Fallback` trait.
 
 use misaki_rs::{fallback::FallbackError, Fallback, Language, G2P};
 use std::collections::HashMap;
@@ -99,7 +101,15 @@ impl SegmentingFallback {
 impl Fallback for SegmentingFallback {
     fn phonemize(&self, word: &str) -> Result<String, FallbackError> {
         let lower = word.to_lowercase();
-        self.segment(&lower)
+        let acronym = word.chars().count() <= 5 && word.chars().all(|c| c.is_ascii_uppercase());
+        let guessed = if acronym {
+            None
+        } else {
+            super::cmudict::lookup(&lower)
+                .or_else(|| self.segment(&lower))
+                .or_else(|| super::rules::pronounce(&lower))
+        };
+        guessed
             .or_else(|| self.spell(word))
             .ok_or_else(|| FallbackError::NoPhonemes {
                 word: word.to_string(),

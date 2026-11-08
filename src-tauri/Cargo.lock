@@ -2496,6 +2496,7 @@ dependencies = [
  "enigo",
  "env_filter",
  "ferrous-opencc",
+ "flate2",
  "futures-util",
  "gtk",
  "gtk-layer-shell",
