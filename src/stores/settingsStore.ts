@@ -96,6 +96,8 @@ const settingUpdaters: {
     commands.changeAudioFeedbackVolumeSetting(value as number),
   read_aloud_speed: (value) =>
     commands.changeReadAloudSpeedSetting(value as number),
+  read_aloud_alert_sound: (value) =>
+    commands.changeReadAloudAlertSoundSetting(value as boolean),
   sound_theme: (value) => commands.changeSoundThemeSetting(value as string),
   start_hidden: (value) => commands.changeStartHiddenSetting(value as boolean),
   autostart_enabled: (value) =>

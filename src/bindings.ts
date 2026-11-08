@@ -85,6 +85,14 @@ async changeReadAloudSpeedSetting(speed: number) : Promise<Result<null, string>>
     else return { status: "error", error: e  as any };
 }
 },
+async changeReadAloudAlertSoundSetting(enabled: boolean) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("change_read_aloud_alert_sound_setting", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async changeSoundThemeSetting(theme: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_sound_theme_setting", { theme }) };
@@ -1145,7 +1153,11 @@ hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: nu
 /**
  * Read-aloud speaking rate; 1.0 is Kokoro's natural pace.
  */
-read_aloud_speed?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; show_whats_new_on_update?: boolean; 
+read_aloud_speed?: number; 
+/**
+ * Play a short tone when the Read Aloud shortcut finds no selected text.
+ */
+read_aloud_alert_sound?: boolean; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; show_whats_new_on_update?: boolean; 
 /**
  * The app version whose What's New the user has already seen. Fresh installs
  * default to the current version (nothing is "new" to them). Existing users

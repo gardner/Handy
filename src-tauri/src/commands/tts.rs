@@ -38,11 +38,15 @@ pub fn get_read_aloud_status(
 pub async fn download_read_aloud_voice(
     app_handle: AppHandle,
     model_manager: State<'_, Arc<ModelManager>>,
+    tts: State<'_, TtsManager>,
 ) -> Result<(), String> {
     let result = model_manager
         .download_tts_model()
         .await
         .map_err(|e| e.to_string());
+    if result.is_ok() {
+        tts.preload();
+    }
     if let Err(ref e) = result {
         error!("Read-aloud voice download failed: {e}");
         let _ = app_handle.emit(
@@ -64,6 +68,15 @@ pub fn read_aloud_text(tts: State<'_, TtsManager>, text: String) {
 #[specta::specta]
 pub fn stop_read_aloud(tts: State<'_, TtsManager>) {
     tts.stop();
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_read_aloud_alert_sound_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.read_aloud_alert_sound = enabled;
+    settings::write_settings(&app, settings);
+    Ok(())
 }
 
 #[tauri::command]

@@ -419,6 +419,9 @@ pub struct AppSettings {
     /// Read-aloud speaking rate; 1.0 is Kokoro's natural pace.
     #[serde(default = "default_read_aloud_speed")]
     pub read_aloud_speed: f32,
+    /// Play a short tone when the Read Aloud shortcut finds no selected text.
+    #[serde(default = "default_read_aloud_alert_sound")]
+    pub read_aloud_alert_sound: bool,
     #[serde(default = "default_sound_theme")]
     pub sound_theme: SoundTheme,
     #[serde(default = "default_start_hidden")]
@@ -698,6 +701,10 @@ fn default_audio_feedback_volume() -> f32 {
 
 fn default_read_aloud_speed() -> f32 {
     1.0
+}
+
+fn default_read_aloud_alert_sound() -> bool {
+    true
 }
 
 fn default_sound_theme() -> SoundTheme {
@@ -1029,6 +1036,7 @@ pub fn get_default_settings() -> AppSettings {
         audio_feedback: false,
         audio_feedback_volume: default_audio_feedback_volume(),
         read_aloud_speed: default_read_aloud_speed(),
+        read_aloud_alert_sound: default_read_aloud_alert_sound(),
         sound_theme: default_sound_theme(),
         start_hidden: default_start_hidden(),
         autostart_enabled: default_autostart_enabled(),

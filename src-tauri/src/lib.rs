@@ -222,7 +222,11 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(history_manager.clone());
     app_handle.manage(tray::TrayState::new());
     app_handle.manage(TranscriptionJobManager::new(app_handle));
-    app_handle.manage(tts::TtsManager::new(app_handle));
+    let tts_manager = tts::TtsManager::new(app_handle);
+    // Load the read-aloud voice now if it's downloaded, so the first press
+    // of the shortcut doesn't wait for it.
+    tts_manager.preload();
+    app_handle.manage(tts_manager);
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -695,6 +699,7 @@ pub fn run(cli_args: CliArgs) {
             commands::tts::read_aloud_text,
             commands::tts::stop_read_aloud,
             commands::tts::change_read_aloud_speed_setting,
+            commands::tts::change_read_aloud_alert_sound_setting,
             shortcut::change_sound_theme_setting,
             shortcut::change_theme_setting,
             shortcut::change_start_hidden_setting,

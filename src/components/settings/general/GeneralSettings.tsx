@@ -15,7 +15,6 @@ import { ModelSettingsCard } from "./ModelSettingsCard";
 import { PreferredLanguages } from "../PreferredLanguages";
 import { ChineseScriptSetting } from "../ChineseScript";
 import { isChinese } from "@/lib/utils/languageSuggestions";
-import { ReadAloudSettings } from "../ReadAloudSettings";
 
 export const GeneralSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -52,7 +51,6 @@ export const GeneralSettings: React.FC = () => {
         />
         <VolumeSlider disabled={!audioFeedbackEnabled} />
       </SettingsGroup>
-      <ReadAloudSettings />
     </div>
   );
 };

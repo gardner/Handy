@@ -5,6 +5,7 @@
 //! player as soon as it's ready, so speech starts after the first sentence
 //! rather than after the whole selection.
 
+mod alert;
 mod cmudict;
 mod fallback;
 pub mod kokoro;
@@ -27,7 +28,8 @@ use tauri::{AppHandle, Manager};
 
 pub struct TtsManager {
     app: AppHandle,
-    /// Loaded on first use and kept: loading takes ~0.4 s.
+    /// Loaded at startup once the voice is downloaded (see `preload`), or
+    /// on first use, and kept: loading takes about 2 s.
     engine: Arc<Mutex<Option<Kokoro>>>,
     /// Bumped by every speak/stop; a reading stops once it no longer matches.
     generation: Arc<AtomicU64>,
@@ -68,6 +70,9 @@ impl TtsManager {
                         NoticeSource::ReadAloud,
                     ),
                 );
+                // The notice only shows in Handy's window; the user is
+                // looking at another app, so tell them by sound too.
+                alert::play_nothing_selected(&worker.app);
                 return;
             };
             worker.speak(text);
@@ -78,6 +83,39 @@ impl TtsManager {
     pub fn speak_text(&self, text: String) {
         let worker = self.worker();
         std::thread::spawn(move || worker.speak(text));
+    }
+
+    /// Load the voice in the background if it's downloaded, so the first
+    /// read starts as fast as later ones. A read that arrives meanwhile
+    /// waits for the load instead of starting a second one.
+    pub fn preload(&self) {
+        let worker = self.worker();
+        std::thread::spawn(move || {
+            let mut engine = worker.engine.lock().unwrap();
+            if engine.is_some() {
+                return;
+            }
+            match worker.load_engine(&mut engine) {
+                Ok(true) => {
+                    // ONNX Runtime's first run is slower than later ones.
+                    let warm = Instant::now();
+                    let kokoro = engine.as_mut().expect("loaded above");
+                    let warmed =
+                        kokoro
+                            .tokenize("Ready.")
+                            .and_then(|chunks| match chunks.first() {
+                                Some(ids) => kokoro.synthesize(ids, 1.0).map(|_| ()),
+                                None => Ok(()),
+                            });
+                    match warmed {
+                        Ok(()) => info!("Read aloud: warmed up in {:?}", warm.elapsed()),
+                        Err(e) => error!("Read aloud: warm-up failed: {e:#}"),
+                    }
+                }
+                Ok(false) => debug!("Read aloud: voice not downloaded; nothing to preload"),
+                Err(e) => error!("Read aloud: preloading the voice failed: {e:#}"),
+            }
+        });
     }
 
     pub fn stop(&self) {
@@ -109,6 +147,17 @@ struct Worker {
 }
 
 impl Worker {
+    /// Load Kokoro into `engine`. `Ok(false)` if the voice isn't downloaded.
+    fn load_engine(&self, engine: &mut Option<Kokoro>) -> anyhow::Result<bool> {
+        let Some((model, voice)) = self.app.state::<Arc<ModelManager>>().tts_model_paths() else {
+            return Ok(false);
+        };
+        let load = Instant::now();
+        *engine = Some(Kokoro::load(&model, &voice)?);
+        info!("Read aloud: loaded Kokoro in {:?}", load.elapsed());
+        Ok(true)
+    }
+
     fn speak(&self, raw: String) {
         // Claim this reading; any earlier one sees the new generation and stops.
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -151,15 +200,8 @@ impl Worker {
     ) -> anyhow::Result<()> {
         let speed = settings::get_settings(&self.app).read_aloud_speed;
         let mut engine = self.engine.lock().unwrap();
-        if engine.is_none() {
-            let (model, voice) = self
-                .app
-                .state::<Arc<ModelManager>>()
-                .tts_model_paths()
-                .ok_or(VoiceMissing)?;
-            let load = Instant::now();
-            *engine = Some(Kokoro::load(&model, &voice)?);
-            info!("Read aloud: loaded Kokoro in {:?}", load.elapsed());
+        if engine.is_none() && !self.load_engine(&mut engine)? {
+            return Err(VoiceMissing.into());
         }
         let engine = engine.as_mut().expect("loaded above");
 

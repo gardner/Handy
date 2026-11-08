@@ -14,6 +14,7 @@
   },
   "sidebar": {
     "general": "Chung",
+    "readAloud": "Read Aloud",
     "models": "Mô hình",
     "advanced": "Nâng cao",
     "postProcessing": "Xử lý sau",
@@ -905,6 +906,7 @@
     },
     "readAloud": {
       "title": "Read Aloud",
+      "description": "Select text in any app and press the shortcut to hear it. Press it again to stop.",
       "voice": {
         "title": "Voice",
         "description": "Kokoro af_heart, an American English voice that runs entirely on this computer (about 320 MB).",
@@ -917,6 +919,10 @@
       "speed": {
         "title": "Speaking Speed",
         "description": "How fast the voice reads. 1.0× is natural pace."
+      },
+      "alertSound": {
+        "label": "Alert When Nothing Is Selected",
+        "description": "Play a short tone when you press the shortcut without any text selected."
       },
       "preview": {
         "title": "Try It",
