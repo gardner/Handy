@@ -75,3 +75,48 @@ jobs:
           path: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           retention-days: 30
+
+  # Publishes every successful build of main as a GitHub Release, so the
+  # installers have permanent public links (run artifacts expire and need a
+  # GitHub login). Tagged v<version>-fork.<run>, since the app version follows
+  # upstream; the newest is marked Latest, so /releases/latest always works.
+  release:
+    if: github.repository == 'gardner/Handy' && github.ref == 'refs/heads/main'
+    needs: [build, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: handy-fork-*
+          path: artifacts
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
+          tag="v${version}-fork.${{ github.run_number }}"
+          mapfile -t files < <(find artifacts -type f \( -name '*.exe' -o -name '*.msi' \
+            -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) | sort)
+          printf 'Uploading:\n'; printf '  %s\n' "${files[@]}"
+          [ "${#files[@]}" -ge 6 ] || { echo "expected 6 installers"; exit 1; }
+          cat > notes.md <<NOTES
+          Handy with **Read Aloud**: select text in any app and press **Ctrl+Alt+R** (Windows/Linux) or **Option+Shift+R** (macOS) to hear it. Press again to stop.
+
+          Built from ${GITHUB_SHA:0:8}. These builds aren't code-signed, so the first launch needs one extra step:
+
+          | | Download | First launch |
+          |---|---|---|
+          | **Windows** | \`Handy_${version}_x64-setup.exe\` | SmartScreen says "Windows protected your PC": click **More info → Run anyway**. |
+          | **macOS** (Apple Silicon) | \`Handy_${version}_aarch64.dmg\` | Open it once, then **System Settings → Privacy & Security → Open Anyway**. If it says "damaged", run \`xattr -dr com.apple.quarantine /Applications/Handy.app\`. |
+          | **Linux** | \`.AppImage\`, \`.deb\` or \`.rpm\` | Needs Ubuntu 24.04 / Debian 13 or newer (glibc 2.38+). Make the AppImage executable first. |
+          NOTES
+          gh release create "$tag" "${files[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "Handy ${version} (fork build ${{ github.run_number }})" \
+            --notes-file notes.md \
+            --generate-notes \
+            --latest
