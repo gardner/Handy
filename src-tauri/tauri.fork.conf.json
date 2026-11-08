@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "signCommand": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/gardner/Handy/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

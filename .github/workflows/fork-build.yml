@@ -1,0 +1,51 @@
+name: "Fork Build"
+
+# Unsigned builds for gardner/Handy. No secrets needed: upstream's signing
+# accounts (Azure Trusted Signing, Apple, the updater key) belong to the
+# upstream maintainer. src-tauri/tauri.fork.conf.json switches those off for
+# this build only, so tauri.conf.json stays identical to upstream:
+#   - Windows: no signCommand (unsigned; SmartScreen asks once per download)
+#   - macOS: ad-hoc signed (tauri.conf.json's signingIdentity "-"), not notarized
+#   - no updater artifacts, and the updater looks at this fork's releases
+#     instead of upstream's, so it never "updates" to a build without our changes
+# Installers are attached to each run as artifacts for 30 days.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'gardner/Handy'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: "windows-latest"
+            args: "--config src-tauri/tauri.fork.conf.json"
+            target: "x86_64-pc-windows-msvc"
+          - platform: "macos-26"
+            args: "--target aarch64-apple-darwin --config src-tauri/tauri.fork.conf.json"
+            target: "aarch64-apple-darwin"
+          - platform: "ubuntu-22.04"
+            args: "--bundles deb --config src-tauri/tauri.fork.conf.json"
+            target: "x86_64-unknown-linux-gnu"
+          - platform: "ubuntu-24.04"
+            args: "--bundles appimage,rpm --config src-tauri/tauri.fork.conf.json"
+            target: "x86_64-unknown-linux-gnu"
+
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: ${{ matrix.platform }}
+      target: ${{ matrix.target }}
+      build-args: ${{ matrix.args }}
+      asset-prefix: "handy-fork"
+      upload-artifacts: true
+      sign-binaries: false
