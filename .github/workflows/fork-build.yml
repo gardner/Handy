@@ -5,7 +5,11 @@ name: "Fork Build"
 # upstream maintainer. src-tauri/tauri.fork.conf.json switches those off for
 # this build only, so tauri.conf.json stays identical to upstream:
 #   - Windows: no signCommand (unsigned; SmartScreen asks once per download)
-#   - macOS: ad-hoc signed (tauri.conf.json's signingIdentity "-"), not notarized
+#   - macOS: ad-hoc signed (tauri.conf.json's signingIdentity "-"), not notarized.
+#     Built in its own job: build.yml always sets APPLE_CERTIFICATE (empty when
+#     unsigned), and Tauri then tries to import that empty certificate and fails.
+#   - Linux: built on Ubuntu 24.04 only. ONNX Runtime's prebuilt library (used by
+#     Read Aloud) needs glibc 2.38+, so it can't link on 22.04.
 #   - no updater artifacts, and the updater looks at this fork's releases
 #     instead of upstream's, so it never "updates" to a build without our changes
 # Installers are attached to each run as artifacts for 30 days.
@@ -31,14 +35,8 @@ jobs:
           - platform: "windows-latest"
             args: "--config src-tauri/tauri.fork.conf.json"
             target: "x86_64-pc-windows-msvc"
-          - platform: "macos-26"
-            args: "--target aarch64-apple-darwin --config src-tauri/tauri.fork.conf.json"
-            target: "aarch64-apple-darwin"
-          - platform: "ubuntu-22.04"
-            args: "--bundles deb --config src-tauri/tauri.fork.conf.json"
-            target: "x86_64-unknown-linux-gnu"
           - platform: "ubuntu-24.04"
-            args: "--bundles appimage,rpm --config src-tauri/tauri.fork.conf.json"
+            args: "--bundles appimage,deb,rpm --config src-tauri/tauri.fork.conf.json"
             target: "x86_64-unknown-linux-gnu"
 
     uses: ./.github/workflows/build.yml
@@ -49,3 +47,31 @@ jobs:
       asset-prefix: "handy-fork"
       upload-artifacts: true
       sign-binaries: false
+
+  macos:
+    if: github.repository == 'gardner/Handy'
+    runs-on: macos-26
+    env:
+      TARGET: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: fork-macos-aarch64
+          cache-bin: false
+      - run: bun install
+      - name: Build (ad-hoc signed)
+        run: bun tauri build --target "$TARGET" --config src-tauri/tauri.fork.conf.json
+      - name: Check the app is ad-hoc signed
+        run: codesign --verify --deep --strict --verbose=2 src-tauri/target/$TARGET/release/bundle/macos/Handy.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: handy-fork-aarch64-apple-darwin
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 30
