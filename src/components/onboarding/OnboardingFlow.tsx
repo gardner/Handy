@@ -126,9 +126,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   if (!permissions.checked) return null;
 
   const steps = STEP_ORDER.filter(
-    (s) => s !== "permissions" || permissions.needed || store.welcomeBack,
+    (s) =>
+      (s !== "permissions" || permissions.needed || store.welcomeBack) &&
+      !(
+        !preview &&
+        permissions.platform === "macos" &&
+        permissions.accessibility !== "granted" &&
+        (s === "demo" || s === "try")
+      ),
   );
-  const step = steps.includes(store.step) ? store.step : steps[0];
+  const step = steps.includes(store.step)
+    ? store.step
+    : store.step === "demo" || store.step === "try"
+      ? "done"
+      : steps[0];
   const progress = { index: steps.indexOf(step), count: steps.length };
   // Reaching returnTo ends the detour.
   const go = (to: OnboardingStep) =>

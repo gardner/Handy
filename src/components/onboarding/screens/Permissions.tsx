@@ -121,19 +121,15 @@ export const Permissions: React.FC<PermissionsProps> = ({
       progress={progress}
       onBack={onBack}
       hint={
-        permissions.allGranted
+        permissions.requiredGranted
           ? ""
-          : t(
-              isMac
-                ? "onboarding.permissions.hintBoth"
-                : "onboarding.permissions.hintMicrophone",
-            )
+          : t("onboarding.permissions.hintMicrophone")
       }
       primary={
         <Button
           variant="primary"
           size="lg"
-          disabled={!permissions.allGranted}
+          disabled={!permissions.requiredGranted}
           onClick={() => {
             if (welcomeBack) set({ welcomeBack: false });
             onContinue();
@@ -189,7 +185,7 @@ export const Permissions: React.FC<PermissionsProps> = ({
             <PermissionRow
               icon={<Keyboard size={20} aria-hidden="true" />}
               title={t("onboarding.permissions.accessibility.name")}
-              why={t("onboarding.permissions.accessibility.why")}
+              why={t("settings.accessibility.optional")}
               status={permissions.accessibility}
               next={next === "accessibility"}
               action={t("onboarding.permissions.allow")}
@@ -198,6 +194,11 @@ export const Permissions: React.FC<PermissionsProps> = ({
             />
           )}
         </div>
+        {isMac && permissions.accessibility !== "granted" && (
+          <p className="mt-[18px] mb-0 text-small text-ink-2">
+            {t("settings.accessibility.enableLater")}
+          </p>
+        )}
         <p
           className={`mt-[18px] mb-0 text-small text-ink-3 ${
             isMac && permissions.accessibility === "granted"

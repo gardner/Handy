@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "../ui/Dropdown";
@@ -13,6 +14,7 @@ interface ClipboardHandlingProps {
 export const ClipboardHandlingSetting: React.FC<ClipboardHandlingProps> =
   React.memo(({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
+    const accessibility = useAccessibility();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
     const clipboardHandlingOptions = [
@@ -38,11 +40,11 @@ export const ClipboardHandlingSetting: React.FC<ClipboardHandlingProps> =
       >
         <Dropdown
           options={clipboardHandlingOptions}
-          selectedValue={selectedHandling}
+          selectedValue={accessibility ? selectedHandling : "copy_to_clipboard"}
           onSelect={(value) =>
             updateSetting("clipboard_handling", value as ClipboardHandling)
           }
-          disabled={isUpdating("clipboard_handling")}
+          disabled={!accessibility || isUpdating("clipboard_handling")}
         />
       </SettingContainer>
     );

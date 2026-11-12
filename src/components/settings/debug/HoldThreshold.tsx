@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Slider } from "../../ui/Slider";
@@ -17,10 +18,12 @@ export const HoldThreshold: React.FC<HoldThresholdProps> = ({
   grouped = false,
 }) => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
   const { settings, updateSetting, resetSetting, isUpdating } = useSettings();
 
   return (
     <Slider
+      disabled={!accessibility}
       value={settings?.hold_threshold_ms ?? 300}
       onChange={(value) => updateSetting("hold_threshold_ms", value)}
       onReset={() => resetSetting("hold_threshold_ms")}

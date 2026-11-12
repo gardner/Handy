@@ -1,4 +1,5 @@
-import React, { useRef } from "react";
+import { useAccessibility } from "@/hooks/useAccessibility";
+import React, { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { formatKeyCombination } from "../../lib/utils/keyboard";
 import { ResetButton } from "../ui/ResetButton";
@@ -23,15 +24,20 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
   shortcutId,
-  disabled = false,
+  disabled: disabledProp = false,
 }) => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
+  const disabled = disabledProp || !accessibility;
   const { getSetting, resetBinding, isUpdating, isLoading } = useSettings();
   const osType = useOsType();
   const { capturing, partial, start, cancel } = useShortcutCapture(
     shortcutId,
     osType,
   );
+  useEffect(() => {
+    if (disabled && capturing) cancel();
+  }, [disabled, capturing, cancel]);
   const shortcutRef = useRef<HTMLDivElement | null>(null);
 
   const bindings = getSetting("bindings") || {};
@@ -116,17 +122,19 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = ({
               : t("settings.general.shortcut.pressKeys")}
           </div>
         ) : (
-          <div
-            className="px-2 py-1 text-sm font-semibold bg-wash border border-line-strong hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
+          <button
+            type="button"
+            disabled={disabled}
+            className="disabled:opacity-50 disabled:cursor-default px-2 py-1 text-sm font-semibold bg-wash border border-line-strong hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
             onClick={start}
           >
             {formatKeyCombination(binding.current_binding, osType)}
-          </div>
+          </button>
         )}
         <ResetButton
           ariaLabel={t("common.resetSetting", { setting: translatedName })}
           onClick={() => resetBinding(shortcutId)}
-          disabled={isUpdating(`binding_${shortcutId}`)}
+          disabled={disabled || isUpdating(`binding_${shortcutId}`)}
         />
       </div>
     </SettingContainer>

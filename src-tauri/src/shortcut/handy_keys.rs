@@ -28,7 +28,7 @@
 //! via Tauri's event system.
 
 use handy_keys::{Hotkey, HotkeyId, HotkeyManager, HotkeyState, KeyboardListener};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde::Serialize;
 use specta::Type;
 use std::collections::HashMap;
@@ -95,8 +95,14 @@ impl HandyKeysState {
         // Create the manager here rather than inside the thread so a startup
         // failure (e.g. missing Accessibility permission) reaches the caller,
         // which can then fall back to the Tauri implementation.
-        let manager = HotkeyManager::new_with_blocking()
-            .map_err(|e| format!("Failed to create HotkeyManager: {e}"))?;
+        let manager = if crate::accessibility::is_granted() {
+            Some(
+                HotkeyManager::new_with_blocking()
+                    .map_err(|e| format!("Failed to create HotkeyManager: {e}"))?,
+            )
+        } else {
+            None
+        };
         let thread_handle = thread::spawn(move || {
             Self::manager_thread(cmd_rx, app_clone, manager);
         });
@@ -112,16 +118,55 @@ impl HandyKeysState {
     }
 
     /// The main manager thread - owns the HotkeyManager and processes commands
-    fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle, manager: HotkeyManager) {
+    fn manager_thread(
+        cmd_rx: Receiver<ManagerCommand>,
+        app: AppHandle,
+        mut manager: Option<HotkeyManager>,
+    ) {
         info!("handy-keys manager thread started");
 
         // Maps binding IDs to HotkeyIds and hotkey strings
         let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
         let mut hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new(); // (binding_id, hotkey_string)
 
+        // Keep desired bindings independently of backend IDs: a recreated tap
+        // assigns new IDs after Accessibility is granted again.
+        let mut desired_bindings: HashMap<String, String> = HashMap::new();
+        let mut permission = crate::accessibility::PermissionPoll::new();
+
         loop {
+            if let Some(granted) = permission.poll() {
+                if !granted && manager.is_some() {
+                    // Drop joins the tap thread after disabling its tap, removing
+                    // the run-loop source and invalidating the Mach port (#1281).
+                    drop(manager.take());
+                    binding_to_hotkey.clear();
+                    hotkey_to_binding.clear();
+                    warn!("Accessibility access revoked; keyboard shortcuts suspended");
+                    crate::utils::cancel_current_operation(&app);
+                } else if granted && manager.is_none() {
+                    match HotkeyManager::new_with_blocking() {
+                        Ok(restored) => {
+                            for (binding_id, hotkey_string) in &desired_bindings {
+                                if let Err(e) = Self::do_register(
+                                    &restored,
+                                    &mut binding_to_hotkey,
+                                    &mut hotkey_to_binding,
+                                    binding_id,
+                                    hotkey_string,
+                                ) {
+                                    error!("Failed to restore shortcut {binding_id}: {e}");
+                                }
+                            }
+                            manager = Some(restored);
+                            info!("Accessibility access granted; keyboard shortcuts restored");
+                        }
+                        Err(e) => error!("Failed to restore keyboard shortcuts: {e}"),
+                    }
+                }
+            }
             // Check for hotkey events (non-blocking)
-            while let Some(event) = manager.try_recv() {
+            while let Some(event) = manager.as_ref().and_then(|m| m.try_recv()) {
                 if let Some((binding_id, hotkey_string)) = hotkey_to_binding.get(&event.id) {
                     debug!(
                         "handy-keys event: binding={}, hotkey={}, state={:?}",
@@ -140,25 +185,39 @@ impl HandyKeysState {
                         hotkey_string,
                         response,
                     } => {
-                        let result = Self::do_register(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                            &hotkey_string,
-                        );
+                        let result = if let Some(manager) = &manager {
+                            Self::do_register(
+                                manager,
+                                &mut binding_to_hotkey,
+                                &mut hotkey_to_binding,
+                                &binding_id,
+                                &hotkey_string,
+                            )
+                        } else {
+                            validate_shortcut(&hotkey_string)
+                        };
+                        if result.is_ok() {
+                            desired_bindings.insert(binding_id, hotkey_string);
+                        }
                         let _ = response.send(result);
                     }
                     ManagerCommand::Unregister {
                         binding_id,
                         response,
                     } => {
-                        let result = Self::do_unregister(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                        );
+                        let result = if let Some(manager) = &manager {
+                            Self::do_unregister(
+                                manager,
+                                &mut binding_to_hotkey,
+                                &mut hotkey_to_binding,
+                                &binding_id,
+                            )
+                        } else {
+                            Ok(())
+                        };
+                        if result.is_ok() {
+                            desired_bindings.remove(&binding_id);
+                        }
                         let _ = response.send(result);
                     }
                     ManagerCommand::Shutdown => {
@@ -296,7 +355,18 @@ impl HandyKeysState {
 
     /// Recording loop - emits key events to frontend during recording
     fn recording_loop(app: AppHandle, running: Arc<AtomicBool>) {
+        let mut permission = crate::accessibility::PermissionPoll::new();
         while running.load(Ordering::SeqCst) {
+            if permission.poll() == Some(false) {
+                if let Some(state) = app.try_state::<HandyKeysState>() {
+                    if let Err(e) = state.stop_recording() {
+                        error!(
+                            "Failed to stop shortcut recording after Accessibility revocation: {e}"
+                        );
+                    }
+                }
+                break;
+            }
             let event = {
                 let state = match app.try_state::<HandyKeysState>() {
                     Some(s) => s,

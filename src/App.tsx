@@ -8,11 +8,9 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
-import {
-  checkAccessibilityPermission,
-  checkMicrophonePermission,
-} from "tauri-plugin-macos-permissions-api";
+import { checkMicrophonePermission } from "tauri-plugin-macos-permissions-api";
 import "./App.css";
+import { AccessibilityNote } from "./components/settings/AccessibilityNote";
 import SecureInputWarning from "./components/SecureInputWarning";
 import Footer from "./components/footer";
 import { OnboardingFlow } from "./components/onboarding/OnboardingFlow";
@@ -192,11 +190,8 @@ function App() {
 
         if (currentPlatform === "macos") {
           try {
-            const [hasAccessibility, hasMicrophone] = await Promise.all([
-              checkAccessibilityPermission(),
-              checkMicrophonePermission(),
-            ]);
-            if (!hasAccessibility || !hasMicrophone) {
+            const hasMicrophone = await checkMicrophonePermission();
+            if (!hasMicrophone) {
               await revealMainWindowForPermissions();
               setOnboardingStep("permissions");
               return;
@@ -337,6 +332,7 @@ function App() {
               <div
                 className={`flex flex-col items-center p-4 gap-4 ${currentSection === "models" ? "h-full" : ""}`}
               >
+                <AccessibilityNote />
                 <SecureInputWarning />
                 {renderSettingsContent(
                   currentSection,

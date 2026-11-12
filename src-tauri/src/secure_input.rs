@@ -630,7 +630,11 @@ mod imp {
             let deadline = start + Duration::from_secs(duration_secs as u64);
             let (mut key_down, mut key_up, mut flags_changed, mut mouse) = (0u32, 0u32, 0u32, 0u32);
 
+            let mut permission = crate::accessibility::PermissionPoll::new();
             while Instant::now() < deadline {
+                if permission.poll() == Some(false) {
+                    return Err("Accessibility access revoked; keyboard diagnostic stopped".into());
+                }
                 match listener.try_recv() {
                     Some(event) => match &event.key {
                         Some(k) if is_mouse_key(k) => mouse += 1,

@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { type } from "@tauri-apps/plugin-os";
@@ -24,6 +25,7 @@ export const KeyboardImplementationSelector: React.FC<
   KeyboardImplementationSelectorProps
 > = ({ descriptionMode = "tooltip", grouped = false }) => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
   const { getSetting, isUpdating, refreshSettings } = useSettings();
   const currentImplementation =
     getSetting("keyboard_implementation") ?? "tauri";
@@ -70,7 +72,7 @@ export const KeyboardImplementationSelector: React.FC<
         options={KEYBOARD_IMPLEMENTATION_OPTIONS}
         selectedValue={currentImplementation}
         onSelect={handleSelect}
-        disabled={isUpdating("keyboard_implementation")}
+        disabled={!accessibility || isUpdating("keyboard_implementation")}
       />
     </SettingContainer>
   );

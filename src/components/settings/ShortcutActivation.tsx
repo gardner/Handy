@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "../ui/Dropdown";
@@ -13,6 +14,7 @@ interface ShortcutActivationProps {
 export const ShortcutActivationSetting: React.FC<ShortcutActivationProps> =
   React.memo(({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
+    const accessibility = useAccessibility();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
     const options = [
@@ -56,7 +58,7 @@ export const ShortcutActivationSetting: React.FC<ShortcutActivationProps> =
           onSelect={(value) =>
             updateSetting("shortcut_activation", value as ShortcutActivation)
           }
-          disabled={isUpdating("shortcut_activation")}
+          disabled={!accessibility || isUpdating("shortcut_activation")}
         />
       </SettingContainer>
     );

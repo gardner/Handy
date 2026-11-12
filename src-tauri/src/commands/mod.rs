@@ -142,6 +142,11 @@ pub fn check_apple_intelligence_available() -> bool {
 pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
     use crate::input::EnigoState;
 
+    // Optional on macOS: don't create input injection state (or prompt) until
+    // access is granted. A later settings permission check retries this.
+    if !crate::accessibility::is_granted() {
+        return Ok(());
+    }
     // Check if already initialized
     if app.try_state::<EnigoState>().is_some() {
         log::debug!("Enigo already initialized");

@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { commands, type KeyboardDiagnosticReport } from "@/bindings";
@@ -13,6 +14,7 @@ import { useOsType } from "../../../hooks/useOsType";
  */
 export const KeyboardDiagnostic: React.FC = () => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
   const osType = useOsType();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<KeyboardDiagnosticReport | null>(null);
@@ -83,7 +85,7 @@ export const KeyboardDiagnostic: React.FC = () => {
         </div>
         <button
           onClick={runDiagnostic}
-          disabled={running}
+          disabled={running || !accessibility}
           className="px-2 py-1 text-sm font-semibold bg-wash border border-line-strong hover:bg-logo-primary/10 rounded cursor-pointer hover:border-logo-primary disabled:opacity-50 disabled:cursor-default whitespace-nowrap"
         >
           {t("settings.debug.keyboardDiagnostic.run")}

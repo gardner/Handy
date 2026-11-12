@@ -30,6 +30,9 @@ fn with_enigo<T: Send + 'static>(
     app_handle
         .run_on_main_thread(move || {
             let result = (|| {
+                if !crate::accessibility::is_granted() {
+                    return Err("Accessibility access is not granted".into());
+                }
                 let enigo_state = app
                     .try_state::<EnigoState>()
                     .ok_or("Enigo state not initialized")?;
@@ -822,6 +825,11 @@ fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool
 pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let _paste = PASTE_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let settings = get_settings(&app_handle);
+    // Clipboard-only operation needs no Accessibility access. Keep the saved
+    // output preferences intact so they resume when permission is restored.
+    if !crate::accessibility::is_granted() {
+        return write_text_to_clipboard(&app_handle, &text);
+    }
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
     let paste_delay_after_ms = settings.paste_delay_after_ms;

@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { ToggleSwitch } from "../../ui/ToggleSwitch";
@@ -14,6 +15,7 @@ export const ReliablePasteToggle: React.FC<ReliablePasteToggleProps> = ({
   grouped = false,
 }) => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
   const { getSetting, updateSetting, isUpdating } = useSettings();
   const osType = useOsType();
 
@@ -24,6 +26,7 @@ export const ReliablePasteToggle: React.FC<ReliablePasteToggleProps> = ({
 
   return (
     <ToggleSwitch
+      disabled={!accessibility}
       checked={getSetting("reliable_paste") ?? false}
       onChange={(enabled) => updateSetting("reliable_paste", enabled)}
       isUpdating={isUpdating("reliable_paste")}
