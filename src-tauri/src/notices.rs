@@ -43,9 +43,11 @@ pub enum NoticeCode {
     TranscriptionFailed,
     PasteFailed,
     NoMicrophone,
+    MicrophoneSilent,
     MicPermissionDenied,
     RecordingFailed,
     ModelLoadFailed,
+    NoModelSelected,
     PostProcessFailed,
     FileTranscriptionFailed,
     FilePostProcessFailed,
@@ -60,9 +62,11 @@ impl NoticeCode {
             Self::TranscriptionFailed
             | Self::PasteFailed
             | Self::NoMicrophone
+            | Self::MicrophoneSilent
             | Self::MicPermissionDenied
             | Self::RecordingFailed
             | Self::ModelLoadFailed
+            | Self::NoModelSelected
             | Self::FileTranscriptionFailed
             | Self::ReadAloudVoiceMissing
             | Self::ReadAloudFailed => NoticeLevel::Error,
@@ -78,9 +82,11 @@ impl NoticeCode {
             Self::TranscriptionFailed => &strings.transcription_failed_title,
             Self::PasteFailed => &strings.paste_failed_title,
             Self::NoMicrophone => &strings.no_input_device_title,
+            Self::MicrophoneSilent => &strings.microphone_silent_title,
             Self::MicPermissionDenied => &strings.mic_permission_denied_title,
             Self::RecordingFailed => &strings.recording_failed_title,
             Self::ModelLoadFailed => &strings.model_load_failed_title,
+            Self::NoModelSelected => &strings.no_model_selected_title,
             Self::PostProcessFailed => &strings.post_process_failed_title,
             Self::FileTranscriptionFailed => &strings.file_transcription_failed_title,
             Self::FilePostProcessFailed => &strings.file_post_process_failed_title,
@@ -261,6 +267,11 @@ mod tests {
                 file(NoticeCode::FileTranscriptionFailed),
             ]
         );
+    }
+
+    #[test]
+    fn no_model_selected_is_an_error() {
+        assert_eq!(NoticeCode::NoModelSelected.level(), NoticeLevel::Error);
     }
 
     #[test]
