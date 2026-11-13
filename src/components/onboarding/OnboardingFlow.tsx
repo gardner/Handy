@@ -12,6 +12,8 @@ import { usePermissions } from "./usePermissions";
 import type { ChineseScriptChoice } from "@/lib/utils/languageSuggestions";
 import { isChinese } from "@/lib/utils/languageSuggestions";
 import { Welcome } from "./screens/Welcome";
+import { Button } from "../ui/Button";
+import { OnboardingShell, ScreenTitle } from "./OnboardingShell";
 import { Permissions } from "./screens/Permissions";
 import { Model } from "./screens/Model";
 import { Demo } from "./screens/Demo";
@@ -46,7 +48,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   previewStep,
   onComplete,
 }) => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const store = useOnboardingStore();
   const { settings, updateSetting } = useSettings();
   const permissions = usePermissions(preview);
@@ -126,9 +128,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   if (!permissions.checked) return null;
 
   const steps = STEP_ORDER.filter(
-    (s) => s !== "permissions" || permissions.needed || store.welcomeBack,
+    (s) =>
+      (s !== "permissions" || permissions.needed || store.welcomeBack) &&
+      !(
+        !preview &&
+        permissions.platform === "macos" &&
+        permissions.accessibility !== "granted" &&
+        (s === "demo" || s === "try")
+      ),
   );
-  const step = steps.includes(store.step) ? store.step : steps[0];
+  const step = steps.includes(store.step)
+    ? store.step
+    : store.step === "demo" || store.step === "try"
+      ? "done"
+      : steps[0];
   const progress = { index: steps.indexOf(step), count: steps.length };
   // Reaching returnTo ends the detour.
   const go = (to: OnboardingStep) =>
@@ -238,6 +251,29 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     // Same element for both steps, so Try it stays mounted into All set.
     case "try":
     case "done":
+      if (
+        !preview &&
+        permissions.platform === "macos" &&
+        permissions.accessibility !== "granted"
+      ) {
+        return (
+          <OnboardingShell
+            progress={progress}
+            onBack={back}
+            primary={
+              <Button variant="primary" size="lg" onClick={finish}>
+                {t("onboarding.done.finish")}
+              </Button>
+            }
+          >
+            <div className="px-7 py-12 space-y-5">
+              <ScreenTitle>{t("onboarding.done.title")}</ScreenTitle>
+              <p>{t("settings.accessibility.description")}</p>
+              <p>{t("settings.accessibility.enableLater")}</p>
+            </div>
+          </OnboardingShell>
+        );
+      }
       return (
         <TryIt
           key="try"

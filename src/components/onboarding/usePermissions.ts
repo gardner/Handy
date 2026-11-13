@@ -23,7 +23,7 @@ export interface Permissions {
   checked: boolean;
   /** Something still needs allowing (decided by the first check). */
   needed: boolean;
-  allGranted: boolean;
+  requiredGranted: boolean;
   /** Asked once already: asking again opens the OS settings instead. */
   microphoneAsked: boolean;
   requestMicrophone: () => Promise<void>;
@@ -63,11 +63,8 @@ export const usePermissions = (preview: boolean): Permissions => {
 
   const isMacOS = os === "macos";
   const isWindows = os === "windows";
-  const allGranted = isMacOS
-    ? accessibility === "granted" && microphone === "granted"
-    : isWindows
-      ? microphone === "granted"
-      : true;
+  // Accessibility enables shortcuts and input injection, but is optional.
+  const requiredGranted = os === "other" || microphone === "granted";
 
   const hasWindowsMicrophoneAccess = useCallback(async () => {
     const status = await commands.getWindowsMicrophonePermissionStatus();
@@ -259,7 +256,7 @@ export const usePermissions = (preview: boolean): Permissions => {
     accessibility,
     checked: microphone !== "checking" && accessibility !== "checking",
     needed,
-    allGranted,
+    requiredGranted,
     microphoneAsked,
     requestMicrophone,
     requestAccessibility,

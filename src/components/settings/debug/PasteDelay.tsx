@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Slider } from "../../ui/Slider";
@@ -21,6 +22,7 @@ export const PasteDelay: React.FC<PasteDelayProps> = ({
   descriptionKey = "settings.debug.pasteDelay.description",
 }) => {
   const { t } = useTranslation();
+  const accessibility = useAccessibility();
   const { settings, updateSetting, resetSetting, isUpdating } = useSettings();
 
   const handleDelayChange = (value: number) => {
@@ -29,6 +31,7 @@ export const PasteDelay: React.FC<PasteDelayProps> = ({
 
   return (
     <Slider
+      disabled={!accessibility}
       value={settings?.[settingKey] ?? 60}
       onChange={handleDelayChange}
       onReset={() => resetSetting(settingKey)}

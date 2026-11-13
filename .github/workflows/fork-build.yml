@@ -106,6 +106,8 @@ jobs:
           cat > notes.md <<NOTES
           Handy with **Read Aloud**: select text in any app and press **Ctrl+Alt+R** (Windows/Linux) or **Option+Shift+R** (macOS) to hear it. Press again to stop.
 
+          **macOS Accessibility is optional during setup.** Without it, global shortcuts (including Read Aloud), automatic pasting and auto-submit are disabled. Dictation results are copied to the clipboard; file transcription and the Read Aloud voice preview remain available. Grant Accessibility later to re-enable the disabled controls without losing saved preferences.
+
           Built from ${GITHUB_SHA:0:8}. These builds aren't code-signed, so the first launch needs one extra step:
 
           | | Download | First launch |

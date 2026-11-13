@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { platform } from "@tauri-apps/plugin-os";
 import App from "./App";
+import { AccessibilityProvider } from "./hooks/useAccessibility";
 import { installCompatShims } from "./lib/compat";
 import {
   applyTheme,
@@ -32,6 +33,8 @@ useNoticeStore.getState().initialize();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <AccessibilityProvider>
+      <App />
+    </AccessibilityProvider>
   </React.StrictMode>,
 );

@@ -30,6 +30,9 @@ pub(crate) fn with_enigo<T: Send + 'static>(
     app_handle
         .run_on_main_thread(move || {
             let result = (|| {
+                if !crate::accessibility::is_granted() {
+                    return Err("Accessibility access is not granted".into());
+                }
                 let enigo_state = app
                     .try_state::<EnigoState>()
                     .ok_or("Enigo state not initialized")?;
@@ -833,6 +836,11 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         text
     };
 
+    // Clipboard-only operation needs no Accessibility access. Keep the saved
+    // output preferences intact so they resume when permission is restored.
+    if !crate::accessibility::is_granted() {
+        return write_text_to_clipboard(&app_handle, &text);
+    }
     info!(
         "Using paste method: {:?}, delay before: {}ms, delay after: {}ms",
         paste_method, paste_delay_ms, paste_delay_after_ms

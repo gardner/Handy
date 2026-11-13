@@ -61,6 +61,9 @@ fn platform_selected_text(app: &AppHandle) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn platform_selected_text(app: &AppHandle) -> Option<String> {
+    if !crate::accessibility::is_granted() {
+        return None;
+    }
     copy::copy_selection(app)
 }
 

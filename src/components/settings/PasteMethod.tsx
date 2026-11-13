@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown, type DropdownOption } from "../ui/Dropdown";
@@ -15,6 +16,7 @@ interface PasteMethodProps {
 export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
+    const accessibility = useAccessibility();
     const { getSetting, updateSetting, isUpdating } = useSettings();
     const osType = useOsType();
 
@@ -83,6 +85,7 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
 
     return (
       <SettingContainer
+        disabled={!accessibility}
         title={t("settings.advanced.pasteMethod.title")}
         description={t("settings.advanced.pasteMethod.description")}
         descriptionMode={descriptionMode}
@@ -91,12 +94,16 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
       >
         <div className="flex flex-col gap-2">
           <Dropdown
-            options={pasteMethodOptions}
+            options={pasteMethodOptions.map((option) => ({
+              ...option,
+              disabled:
+                option.disabled || (!accessibility && option.value !== "none"),
+            }))}
             selectedValue={selectedMethod}
             onSelect={(value) =>
               updateSetting("paste_method", value as PasteMethod)
             }
-            disabled={isUpdating("paste_method")}
+            disabled={!accessibility || isUpdating("paste_method")}
           />
           {selectedMethod === "external_script" && (
             <Input

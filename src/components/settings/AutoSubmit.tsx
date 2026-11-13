@@ -1,3 +1,4 @@
+import { useAccessibility } from "@/hooks/useAccessibility";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "../ui/Dropdown";
@@ -16,6 +17,7 @@ type AutoSubmitOptionValue = AutoSubmitKey | "off";
 export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
+    const accessibility = useAccessibility();
     const osType = useOsType();
     const { getSetting, updateSetting, isUpdating } = useSettings();
 
@@ -63,6 +65,7 @@ export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
 
     return (
       <SettingContainer
+        disabled={!accessibility}
         title={t("settings.advanced.autoSubmit.title")}
         description={t("settings.advanced.autoSubmit.description")}
         descriptionMode={descriptionMode}
@@ -72,7 +75,11 @@ export const AutoSubmit: React.FC<AutoSubmitProps> = React.memo(
           options={autoSubmitOptions}
           selectedValue={selectedValue}
           onSelect={handleAutoSubmitSelect}
-          disabled={isUpdating("auto_submit") || isUpdating("auto_submit_key")}
+          disabled={
+            !accessibility ||
+            isUpdating("auto_submit") ||
+            isUpdating("auto_submit_key")
+          }
         />
       </SettingContainer>
     );

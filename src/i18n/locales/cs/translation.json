@@ -327,6 +327,12 @@
     "lockedWhileTranscribing": "Model můžete změnit, až se dokončí přepis v Historii."
   },
   "settings": {
+    "accessibility": {
+      "title": "Accessibility Is Optional",
+      "description": "Without Accessibility, global shortcuts (including Read Aloud), automatic pasting and auto-submit are unavailable. Use file transcription or CLI commands; dictation results are copied to the clipboard for you to paste manually. Your output preferences will resume when access is enabled.",
+      "enableLater": "To enable these features later, open macOS System Settings → Privacy & Security → Accessibility and turn on Handy.",
+      "optional": "Optional: enables global shortcuts, automatic pasting and auto-submit. You can continue without it."
+    },
     "modelSettings": {
       "title": "Nastavení {{model}}"
     },
